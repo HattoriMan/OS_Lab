@@ -1,0 +1,46 @@
+//init code loading
+loadi(65,7);
+loadi(66,8);
+
+//INT 10 trap code loading
+loadi(22,35);
+loadi(23,36);
+
+//Exception handler interrupt loading
+loadi(2,15);
+loadi(3,16);
+
+//Set Page Table Base and Length Register
+PTBR = PAGE_TABLE_BASE;
+PTLR = 9;
+
+//Set Page Table
+[PTBR+0] = 	65;
+[PTBR+1] = "0000";
+[PTBR+2] = 66;
+[PTBR+3] = "0000";
+[PTBR+4] = 76;
+[PTBR+5] = "0000";
+[PTBR+6] = 	65;
+[PTBR+7] = "0000";
+[PTBR+8] = 65;
+[PTBR+9] = "0100";
+[PTBR+10] = 66;
+[PTBR+11] = "0100";
+[PTBR+12] = 65;
+[PTBR+13] = "0000";
+[PTBR+14] = 66;
+[PTBR+15] = "0000";
+[PTBR+16] = 76;
+[PTBR+17] = "0110";
+
+//Store first instruction address for the INIT Process on top of stack
+//Remember it is calculated physicaly as we are still in privileged/kernel mode
+[76*512] = 2048; 
+//0 as the first instruction is at 0th position
+//Stack Pointer has logical address as this will be accessed with iret and is part of the INIT process memory pages.
+SP = 8*512;
+
+//call iret to switch from kernel to user mode.
+ireturn;
+

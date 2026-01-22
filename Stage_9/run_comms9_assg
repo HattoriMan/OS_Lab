@@ -1,0 +1,6 @@
+load --init ../expl/expl_progs/init_practice.xsm
+load --int=10 ../spl/spl_progs/haltprog.xsm
+load --exhandler ../spl/spl_progs/haltprog.xsm
+load --int=timer ../spl/spl_progs/timer_stage9_assg.xsm
+load --library ../expl/library.lib
+load --os ../spl/spl_progs/os_start_stage9.xsm

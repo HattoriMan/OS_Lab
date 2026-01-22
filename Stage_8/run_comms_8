@@ -1,0 +1,6 @@
+load --library ../expl/library.lib
+load --init $HOME/myexpos/expl/expl_progs/squares1.xsm
+load --int=10 $HOME/myexpos/spl/spl_progs/haltprog.xsm
+load --exhandler $HOME/myexpos/spl/spl_progs/haltprog.xsm
+load --int=timer $HOME/myexpos/spl/spl_progs/sample_timer.xsm
+load --os $HOME/myexpos/spl/spl_progs/os_startup2.xsm

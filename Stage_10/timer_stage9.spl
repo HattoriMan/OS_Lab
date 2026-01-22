@@ -1,0 +1,19 @@
+//save current user sp from SP to UPTR in process table
+[PROCESS_TABLE + ([SYSTEM_STATUS_TABLE + 1]*16) + 13] = SP;
+
+// Setting SP to UArea Page number * 512 - 1
+SP = [PROCESS_TABLE + ([SYSTEM_STATUS_TABLE + 1]*16) + 11]*512 - 1;
+
+backup;
+print "TIMER";
+restore;
+
+//get back user sp from process table
+SP = [PROCESS_TABLE + ([SYSTEM_STATUS_TABLE + 1]*16) + 13];
+
+ireturn;
+
+
+
+
+//Registers R0-R15 are user registers. Since you have not saved the register values into the stack yet, you should be careful not to write any code that alters these registers till the user context is saved into the stack. Registers R16-R19 are marked for kernel use and hence the kernel can modify them. The SPL compiler will use these registers to translate your SPL code.
