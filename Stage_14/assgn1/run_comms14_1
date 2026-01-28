@@ -1,0 +1,9 @@
+load --idle ../expl/samples/idle12.xsm
+load --int=10 ../spl/spl_progs/int10_14.xsm
+load --exhandler ../spl/spl_progs/haltprog.xsm
+load --int=7 ../spl/spl_progs/sample_int7.xsm
+load --library ../expl/library.lib
+load --int=timer ../spl/spl_progs/timer14.xsm
+load --os ../spl/spl_progs/os14.xsm
+load --module 7 ../spl/spl_progs/bt14_1.xsm
+load --module 5 ../spl/spl_progs/mod5_14.xsm

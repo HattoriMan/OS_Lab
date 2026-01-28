@@ -1,0 +1,3 @@
+load --init ../expl/samples/init14_1.xsm
+load --exec ../expl/samples/exec14_1.xsm
+load --exec ../expl/samples/exec14_2.xsm

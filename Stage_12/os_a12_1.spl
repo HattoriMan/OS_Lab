@@ -1,0 +1,121 @@
+//lib
+loadi(63,13);
+loadi(64,14);
+
+//init
+loadi(65,7);
+loadi(66,8);
+
+//idle
+loadi(69,11);
+loadi(70,12);
+
+//int=timer
+loadi(4,17);
+loadi(5,18);
+
+//exhandler
+loadi(2,15);
+loadi(3,16);
+
+//int=10
+loadi(22,35);
+loadi(23,36);
+
+//int=7
+loadi(16,29);
+loadi(17,30);
+
+PTBR = PAGE_TABLE_BASE;
+PTLR = 10;
+
+[PTBR + 0] = 63;
+[PTBR + 1] = "0100";
+[PTBR + 2] = 64;
+[PTBR + 3] = "0100";
+[PTBR + 4] = -1;
+[PTBR + 5] = "0000";
+[PTBR + 6] = -1;
+[PTBR + 7] = "0000";
+[PTBR + 8] = 69;
+[PTBR + 9] = "0100";
+[PTBR + 10] = 70;
+[PTBR + 11] = "0100";
+[PTBR + 12] = -1;
+[PTBR + 13] = "0000";
+[PTBR + 14] = -1;
+[PTBR + 15] = "0000";
+[PTBR + 16] = 81;
+[PTBR + 17] = "0110";
+[PTBR + 18] = -1;
+[PTBR + 19] = "0000";
+
+//user area page address for idle
+[PROCESS_TABLE + 11] = 82;
+//the process ID of the process = 0
+[PROCESS_TABLE + 1] = 0;
+//set state to created
+[PROCESS_TABLE + 4] = 3;
+//set uptr to 8*512
+[PROCESS_TABLE + 13] = 8*512;
+//set kptr to 0
+[PROCESS_TABLE + 12] = 0;
+//set ptbr
+[PROCESS_TABLE + 14] = PTBR;
+//set ptlr
+[PROCESS_TABLE + 15] = PTLR;
+
+//save ip for starting of idle process in user sp
+[81*512] = [69*512+1];
+
+PTBR = PAGE_TABLE_BASE + 20;
+
+[PTBR + 0] = 63;
+[PTBR + 1] = "0100";
+[PTBR + 2] = 64;
+[PTBR + 3] = "0100";
+[PTBR + 4] = 78;
+[PTBR + 5] = "0110";
+[PTBR + 6] = 79;
+[PTBR + 7] = "0110";
+[PTBR + 8] = 65;
+[PTBR + 9] = "0100";
+[PTBR + 10] = 66;
+[PTBR + 11] = "0100";
+[PTBR + 12] = -1;
+[PTBR + 13] = "0000";
+[PTBR + 14] = -1;
+[PTBR + 15] = "0000";
+[PTBR + 16] = 76;
+[PTBR + 17] = "0110";
+[PTBR + 18] = 77;
+[PTBR + 19] = "0110";
+
+//user area page address for init
+[PROCESS_TABLE + 16 + 11] = 80;
+//the process ID of the process = 1
+[PROCESS_TABLE + 16 + 1] = 1;
+//set current process ID in system status table
+[SYSTEM_STATUS_TABLE + 1] = 1;
+//set state to running
+[PROCESS_TABLE + 16 + 4] = 2;
+//set uptr to 8*512
+[PROCESS_TABLE + 16 + 13] = 8*512;
+//set kptr to 0
+[PROCESS_TABLE + 16 + 12] = 0;
+//set ptbr
+[PROCESS_TABLE + 16 + 14] = PTBR;
+//set ptlr
+[PROCESS_TABLE + 16 + 15] = PTLR;
+//set current process ID in system status table
+[SYSTEM_STATUS_TABLE + 1] = 1;
+
+//save ip for starting of idle process in user sp
+[76*512] = [65*512+1];
+
+//set sp
+SP = 8*512;
+
+//note we have already set ptlr and ptbr earlier
+
+ireturn;
