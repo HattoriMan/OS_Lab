@@ -52,6 +52,7 @@ if(newPID == 0) then
 
 	//note this wont work as new_process_table == R0 would be overwritten by restore 
 	//SP = [new_process_table + 13];
+	//Note we can also use SYSTEM_STATUS_TABLE to obtain the newPID and hence the User Stack Pointer(UPTR) from the PROCESS_TABLE
 	SP = [PROCESS_TABLE + 13];
 else
 	[new_process_table + 4] = RUNNING;
@@ -60,6 +61,7 @@ else
 
 	//note this wont work as new_process_table == R0 would be overwritten by restore 
 	//SP = [new_process_table + 13];
+	//Note we can also use SYSTEM_STATUS_TABLE to obtain the newPID and hence the User Stack Pointer(UPTR) from the PROCESS_TABLE
 	SP = [PROCESS_TABLE + 16 + 13];
 endif;
 breakpoint;
