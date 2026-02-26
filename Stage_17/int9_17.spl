@@ -1,0 +1,157 @@
+[PROCESS_TABLE + [SYSTEM_STATUS_TABLE + 1]*16 + 13] = SP;
+
+alias userSP R0;
+userSP = SP;
+
+SP = [PROCESS_TABLE + [SYSTEM_STATUS_TABLE + 1]*16 + 11]*512 - 1;
+
+[PROCESS_TABLE + [SYSTEM_STATUS_TABLE + 1]*16 + 9] = 9; //set mode flag to syscall number of exec=9
+
+alias fName R1;
+fName = [[PTBR + 2*(userSP-4)/512]*512 + ((userSP-4)%512)];
+
+alias num R2;
+num = 0;
+
+while(num<MAX_FILE_NUM) do //MAX_FILE_NUM=60
+	if([INODE_TABLE + num*16 + 1]==fName  && [INODE_TABLE + num*16 + 0]==EXEC) then
+		break;
+	endif;
+	num=num+1;
+endwhile;
+
+//print num;
+
+if(num==MAX_FILE_NUM) then
+	SP = [PROCESS_TABLE + [SYSTEM_STATUS_TABLE + 1]*16 + 13];
+	[PROCESS_TABLE + [SYSTEM_STATUS_TABLE + 1]*16 + 9] = 0; //set mode flag
+	[[PTBR + 2*(userSP-1)/512]*512 + ((userSP-1)%512)]=-1; //set retVal
+	ireturn;
+endif;
+
+breakpoint;
+multipush(R0,R1,R2);
+R1=EXIT_PROCESS; //funcNum=3 for exit process
+R2=[SYSTEM_STATUS_TABLE+1];
+call MOD_1; // PROCESS_MANAGER
+multipop(R0,R1,R2);
+breakpoint;
+
+//Get the user area page number from the process table of the current process. This page has been deallocated by the Exit Process function. Reclaim the same page by incrementing the memory free list entry of user area page and decrementing the MEM_FREE_COUNT field in the system status table. (same user area page is reclaimed - why?)
+R4 = [PROCESS_TABLE + [SYSTEM_STATUS_TABLE + 1]*16 + 11];
+[MEMORY_FREE_LIST+R4] = [MEMORY_FREE_LIST+R4] + 1;
+[SYSTEM_STATUS_TABLE + 2] = [SYSTEM_STATUS_TABLE + 2] - 1;
+
+// Set the SP to the start of the user area page to intialize the kernel stack of the new process.
+SP = [R4]*512-1;
+
+//New process uses the PID of the terminated process. Update the STATE field to RUNNING and store inode index obtained above in the inode index field in the process table.
+[PROCESS_TABLE+[SYSTEM_STATUS_TABLE+1]*16+4]=RUNNING;
+
+//Allocate new pages and set the page table entries for the new process.
+//Set the library page entries in the page table. (must be set to read only-why? Note that library page need not be allocated.)
+//Invoke the Get Free Page function to allocate 2 stack and 2 heap pages. Also validate the corresponding entries in page table.
+//Find out the number of blocks occupied by the file from inode table. Allocate same number of code pages by invoking the Get Free Page function and update the page table entries.
+
+//library(need not be allocated)
+[PTBR+0]=63;
+[PTBR+1]="0100";
+[PTBR+2]=64;
+[PTBR+3]="0100";
+//heap
+multipush(R0,R1,R2,R4);
+R1=GET_FREE_PAGE; //GET_FREE_PAGE=1
+call MOD_2; // MEMORY_MANAGER
+[PTBR+4]=R0; //return value = free page allocated
+multipop(R0,R1,R2,R4);
+[PTBR+5]="0110";
+multipush(R0,R1,R2,R4);
+R1=GET_FREE_PAGE; //GET_FREE_PAGE=1
+call MOD_2; // MEMORY_MANAGER
+[PTBR+6]=R0; //return value = free page allocated
+multipop(R0,R1,R2,R4);
+[PTBR+7]="0110";
+//code
+if([INODE_TABLE+num*16+8]!=-1) then
+	multipush(R0,R1,R2,R4);
+	R1=GET_FREE_PAGE; //GET_FREE_PAGE=1
+	call MOD_2; // MEMORY_MANAGER
+	//breakpoint;
+	[PTBR+8]=R0;
+	[PTBR+9]="0110";
+	R5=R0;
+	multipop(R0,R1,R2,R4);
+	//breakpoint;
+	loadi(R5,[INODE_TABLE+num*16+8]);
+	//breakpoint;
+else
+	[PTBR+8]=-1;
+	[PTBR+9]="0000";
+endif;
+if([INODE_TABLE+num*16+9]!=-1) then
+	multipush(R0,R1,R2,R4);
+	R1=GET_FREE_PAGE; //GET_FREE_PAGE=1
+	call MOD_2; // MEMORY_MANAGER
+	[PTBR+10]=R0;
+	[PTBR+11]="0110";
+	R5=R0;
+	multipop(R0,R1,R2,R4);
+	loadi(R5,[INODE_TABLE+num*16+9]);
+else
+	[PTBR+10]=-1;
+	[PTBR+11]="0000";
+endif;
+if([INODE_TABLE+num*16+10]!=-1) then
+	multipush(R0,R1,R2,R4);
+	R1=GET_FREE_PAGE; //GET_FREE_PAGE=1
+	call MOD_2; // MEMORY_MANAGER
+	[PTBR+12]=R0;
+	[PTBR+13]="0110";
+	R5=R0;
+	multipop(R0,R1,R2,R4);
+	loadi(R5,[INODE_TABLE+num*16+10]);
+else
+	[PTBR+12]=-1;
+	[PTBR+13]="0000";
+endif;
+if([INODE_TABLE+num*16+11]!=-1) then
+	multipush(R0,R1,R2,R4);
+	R1=GET_FREE_PAGE; //GET_FREE_PAGE=1
+	call MOD_2; // MEMORY_MANAGER
+	[PTBR+14]=R0;
+	[PTBR+15]="0110";
+	R5=R0;
+	multipop(R0,R1,R2,R4);
+	loadi(R5,[INODE_TABLE+num*16+11]);
+else
+	[PTBR+14]=-1;
+	[PTBR+15]="0000";
+endif;
+//stack
+multipush(R0,R1,R2,R4);
+R1=GET_FREE_PAGE; //GET_FREE_PAGE=1
+call MOD_2; // MEMORY_MANAGER
+[PTBR+16]=R0; //return value = free page allocated
+multipop(R0,R1,R2,R4);
+[PTBR+17]="0110";
+multipush(R0,R1,R2,R4);
+R1=GET_FREE_PAGE; //GET_FREE_PAGE=1
+call MOD_2; // MEMORY_MANAGER
+[PTBR+18]=R0; //return value = free page allocated
+multipop(R0,R1,R2,R4);
+[PTBR+19]="0110";
+
+[PROCESS_TABLE + [SYSTEM_STATUS_TABLE + 1]*16 + 9] = 0; // set mode flag
+
+//change userSP;
+userSP=[PTBR+16];
+[userSP*512] = [[PTBR+8]*512+1];
+//breakpoint
+
+//SP = [PROCESS_TABLE + [SYSTEM_STATUS_TABLE + 1]*16 + 13];
+//wont work as we didnt set new userSP in the process table you can do this first or do the following
+SP=8*512;
+//[[PTBR + 2*(userSP-1)/512]*512 + ((userSP-1)%512)] = 0; //set retVal
+//breakpoint;
+
+ireturn;

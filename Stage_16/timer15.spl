@@ -1,0 +1,28 @@
+[PROCESS_TABLE + [SYSTEM_STATUS_TABLE + 1]*16 + 13] = SP;
+SP = [PROCESS_TABLE + [SYSTEM_STATUS_TABLE + 1]*16 + 11]*512-1;
+backup;
+//breakpoint;
+
+//set status READY
+alias process_table_entry R0;
+process_table_entry = PROCESS_TABLE + [SYSTEM_STATUS_TABLE+1] * 16;
+[process_table_entry + 4] = READY;
+
+alias numPID R1;
+alias tick R2;
+numPID=0;
+while(numPID<=15) do
+	process_table_entry = PROCESS_TABLE + numPID * 16;
+	tick = [process_table_entry+0];
+	[process_table_entry+0]=tick+1; //increment tick for each field
+	numPID=numPID+1;
+endwhile;
+
+call MOD_5;
+
+restore;
+
+SP = [PROCESS_TABLE + [SYSTEM_STATUS_TABLE + 1]*16 + 13]; //restore userSP from UPTR
+[PROCESS_TABLE + [SYSTEM_STATUS_TABLE + 1]*16 + 9] = 0; //set mode to 0 as user process
+
+ireturn;

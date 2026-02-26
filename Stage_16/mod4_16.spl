@@ -1,0 +1,62 @@
+alias functionNum R1;
+alias currentPID R2;
+
+//for write
+if(R1==3) then
+	//Calling Acquire Terminal 
+	//save all registers used till now to retrieve context later including arguments it receives
+	multipush(R1,R2,R3);
+	R1=8; //save function number for acquiring terminal
+	//R2 already contains CurrentPID therefore no need to save it again, but in some other case if not then take it from system status table
+	call MOD_0;
+	//Ignore the value present in R0 as Acquire Terminal does not have any return value.
+	//restore all registers context saved earlier
+	multipop(R1,R2,R3);
+	print R3; //as word is in R3
+	//Calling Release Terminal 
+	//save all registers used till nowto retrieve context later including arguments it receives
+	multipush(R1,R2,R3);
+	R1=9; //save function number for acquiring terminal
+	//R2 already contains CurrentPID therefore no need to save it again, but in some other case if not then take it from system status table
+	call MOD_0;
+	//R0 has return values won't be disturbed as stack pop doesnt store value in R0
+	//restore all registers context saved earlier
+	multipop(R1,R2,R3);
+	//return;
+endif;
+//for read
+if(R1==4) then
+	//Calling Acquire Terminal 
+	//save all registers used till now to retrieve context later including arguments it receives
+	multipush(R1,R2,R3);
+	R1=8; //save function number for acquiring terminal
+	//R2 already contains CurrentPID therefore no need to save it again, but in some other case if not then take it from system status table
+	call MOD_0;
+	//Ignore the value present in R0 as Acquire Terminal does not have any return value.
+	//restore all registers context saved earlier
+	multipop(R1,R2,R3);
+	read; //for requesting to read from the terminal
+	[PROCESS_TABLE + currentPID*16 + 4] = WAIT_TERMINAL;
+	//Invoking the Context Switch Module
+
+	//Push all the registers used till now
+	multipush(R1,R2,R3);
+	//Invoke the scheduler
+	call MOD_5;
+	
+	//Following steps are executed after return from the scheduler
+
+	//Restore the registers using the multipop statement
+	multipop(R1,R2,R3);
+	//The logical address of the word where the data has to be stored is in R3. Convert this logical address to physical address
+	//just taking ptbr from process table instead of ptbr directly
+	R4 = [PTBR+2*(R3/512)]*512+(R3)%512;
+	//Store the value present in input buffer field of process table to the obtained physical address of the word
+	[R4] = [PROCESS_TABLE + (currentPID*16) + 8];
+	//breakpoint;
+	//Return to the caller
+	//return;
+endif;
+
+
+return;

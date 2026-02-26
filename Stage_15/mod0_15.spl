@@ -1,0 +1,41 @@
+alias functionNum R1;
+alias currentPID R2;
+
+breakpoint;
+
+//for acquiring terminal
+if(R1==8) then
+	//while terminal is allocated to other processes wait
+	while([TERMINAL_STATUS_TABLE+0]==1) do
+		[PROCESS_TABLE+(currentPID)*16+4]=WAIT_TERMINAL;
+		//change state of current PID to WAIT_TERMINAL
+		multipush(R1,R2);
+		call MOD_5; //scheduler
+		//pop stack to gain context, would run after terminal is released 
+		multipop(R1,R2);
+	endwhile;
+	[TERMINAL_STATUS_TABLE+0]=1; //change terminal status
+	[TERMINAL_STATUS_TABLE+1]=currentPID; //change PID in terminal status table
+	return;
+endif;
+
+//for releasing terminal
+if(R1==9) then
+	if(currentPID==[TERMINAL_STATUS_TABLE+1]) then
+		[TERMINAL_STATUS_TABLE+0]=0; //change status to mark release of terminal
+		alias PID R15;
+		PID=0;
+		//Update the STATE to READY for all processes (with valid PID) which have STATE as WAIT_TERMINAL.
+		while(PID<16) do
+			if([PROCESS_TABLE+(PID)*16+4]==WAIT_TERMINAL) then
+				[PROCESS_TABLE+(PID)*16+4]=READY;
+			endif;
+			PID=PID+1;
+		endwhile;
+		R0=0;
+		return;
+	else
+		R0=-1; //as this process is trying to release terminal without even acquiring it
+		return;
+	endif;
+endif;

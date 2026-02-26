@@ -1,0 +1,27 @@
+alias functionNum R1;
+alias currentPID R2;
+
+if(R1==3) then
+	//Calling Acquire Terminal 
+	//save all registers used till nowto retrieve context later including arguments it receives
+	multipush(R1,R2,R3);
+	R1=8; //save function number for acquiring terminal
+	//R2 already contains CurrentPID therefore no need to save it again, but in some other case if not then take it from system status table
+	call MOD_0;
+	//Ignore the value present in R0 as Acquire Terminal does not have any return value.
+	//restore all registers context saved earlier
+	multipop(R1,R2,R3);
+	print R3; //as word is in R3
+	//Calling Release Terminal 
+	//save all registers used till nowto retrieve context later including arguments it receives
+	multipush(R1,R2,R3);
+	R1=9; //save function number for acquiring terminal
+	//R2 already contains CurrentPID therefore no need to save it again, but in some other case if not then take it from system status table
+	call MOD_0;
+	//R0 has return values won't be disturbed as stack pop doesnt store value in R0
+	//restore all registers context saved earlier
+	multipop(R1,R2,R3);
+	return;
+else 
+	return;	
+endif;

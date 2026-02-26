@@ -1,0 +1,45 @@
+alias funcNum R1;
+alias WAIT_MEM_COUNT R4;
+alias MEM_FREE_COUNT R5;
+WAIT_MEM_COUNT=[SYSTEM_STATUS_TABLE+3];
+MEM_FREE_COUNT=[SYSTEM_STATUS_TABLE+2];
+
+if(funcNum==1) then //get free page
+	//WAIT_MEM_COUNT=WAIT_MEM_COUNT+1;
+	[SYSTEM_STATUS_TABLE+3]=[SYSTEM_STATUS_TABLE+3]+1;
+	//while(MEM_FREE_COUNT==0) do
+	while([SYSTEM_STATUS_TABLE+2]==0) do
+		[PROCESS_TABLE+[SYSTEM_STATUS_TABLE+1]*16+4]=WAIT_MEM;
+		multipush(R1,R4,R5);
+		call MOD_5; //SCHEDULER
+		multipop(R1,R4,R5);
+	endwhile;
+	//WAIT_MEM_COUNT=WAIT_MEM_COUNT-1;
+	[SYSTEM_STATUS_TABLE+3]=[SYSTEM_STATUS_TABLE+3]-1;
+	//MEM_FREE_COUNT=MEM_FREE_COUNT-1;
+	[SYSTEM_STATUS_TABLE+2]=[SYSTEM_STATUS_TABLE+2]-1;
+	R2=83;
+	while(R2<128) do
+		if([MEMORY_FREE_LIST+R2]==0) then
+			R0=R2;
+			[MEMORY_FREE_LIST+R2]=1;
+			break;
+		endif;
+		R2=R2+1;
+	endwhile;
+endif;
+
+if(funcNum==2) then //RELEASE_PAGE
+	[MEMORY_FREE_LIST+R2]=0;
+	//MEM_FREE_COUNT=MEM_FREE_COUNT+1;
+	[SYSTEM_STATUS_TABLE+2]=[SYSTEM_STATUS_TABLE+2]+1;
+	R3=0;
+	while(R3<16) do
+		if([PROCESS_TABLE+R3*16+4]==WAIT_MEM) then
+			[PROCESS_TABLE+R3*16+4]=READY;
+		endif;
+		R3=R3+1;
+	endwhile;
+endif;
+
+return;

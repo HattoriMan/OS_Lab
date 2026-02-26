@@ -1,0 +1,22 @@
+decl
+	int b[10];
+enddecl
+int main(){
+decl
+	int c,a;
+enddecl
+begin
+	c=0;
+	while(c<10) do
+		read(b[c]);
+		c=c+1;
+	endwhile;
+	write("P1");
+	c=0;
+	while(c<10) do
+		write(b[c]);
+		c=c+1;
+	endwhile;
+	return 0;
+end
+}

@@ -1,0 +1,2 @@
+load --init ../expl/samples/intest.xsm
+load --exec ../expl/samples/p2.xsm

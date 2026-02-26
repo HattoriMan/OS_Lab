@@ -1,0 +1,47 @@
+[PROCESS_TABLE+[SYSTEM_STATUS_TABLE+1]*16+13]=SP;
+
+SP = [PROCESS_TABLE+[SYSTEM_STATUS_TABLE+1]*16+11]*512-1;
+
+backup;
+
+//breakpoint;
+
+alias reqPID R2;
+reqPID = [TERMINAL_STATUS_TABLE+1];
+
+[PROCESS_TABLE + reqPID*16 + 8] = P0;
+//The input entered in the console is saved in port P0 by the XSM machine. Copy the value present in P0 into the input buffer field of the process table entry obtained in the above step
+//breakpoint;
+
+
+//Releasing the terminal
+multipush(R2,R15);
+
+//Initialize register R1 with function number for release terminal, R2 with reqPID (The current process did not acquire the terminal. The process with reqPID as PID is holding the terminal.)
+
+//R1 = 9; //function number for release terminal
+//note R2 already has reqPID;
+//call MOD_0; //resource manager module
+
+	[TERMINAL_STATUS_TABLE+0]=0; //change status to mark release of terminal
+	alias PID R15;
+	PID=0;
+	//Update the STATE to READY for all processes (with valid PID) which have STATE as WAIT_TERMINAL.
+	while(PID<16) do
+		if([PROCESS_TABLE+(PID)*16+4]==WAIT_TERMINAL) then
+			[PROCESS_TABLE+(PID)*16+4]=READY;
+		endif;
+		PID=PID+1;
+	endwhile;
+	R0=0;
+
+//Ignore the return value and restore the registers pushed before.
+multipop(R2,R15);
+
+//Restore the user context from the kernel stack as done in the timer interrupt routine.
+restore;
+
+//Change SP to UPTR field from the process table entry of the currently running process and return to the user mode. //Switch back to user stack
+SP=[PROCESS_TABLE+[SYSTEM_STATUS_TABLE+1]*16+13];
+
+ireturn;
