@@ -1,0 +1,33 @@
+//When the disk-memory transfer is complete, XSM raises the disk interrupt. The disk interrupt handler then performs the following tasks :
+//1) Switch to the kernel stack and back up the register context.
+//2) Set the STATUS field in the Disk Status table to 0 indicating that disk is no longer busy.
+//3) Go through all the process table entries, and change the state of the process to READY, which is in WAIT_DISK state.
+//4) Restore the register context and return to user mode using the ireturn statement.
+//Note: There is no Release Disk function to release the disk instead the disk interrupt handler completes the task of the Release Disk function.
+
+
+[PROCESS_TABLE+[SYSTEM_STATUS_TABLE+1]*16+13]=SP;
+
+SP = [PROCESS_TABLE+[SYSTEM_STATUS_TABLE+1]*16+11]*512-1;
+
+backup;
+
+[DISK_STATUS_TABLE+0]=0; //reset disk status to mark the release of the disk
+
+alias PID R15;
+PID=0;
+//Update the STATE to READY for all processes (with valid PID) which have STATE as WAIT_DISK.
+while(PID<16) do
+	if([PROCESS_TABLE+(PID)*16+4]==WAIT_DISK) then
+		[PROCESS_TABLE+(PID)*16+4]=READY;
+	endif;
+	PID=PID+1;
+endwhile;
+
+//Restore the user context from the kernel stack as done in the timer interrupt routine.
+restore;
+
+//Change SP to UPTR field from the process table entry of the currently running process and return to the user mode. //Switch back to user stack
+SP=[PROCESS_TABLE+[SYSTEM_STATUS_TABLE+1]*16+13];
+
+ireturn;

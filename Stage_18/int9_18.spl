@@ -29,13 +29,13 @@ if(num==MAX_FILE_NUM) then
 	ireturn;
 endif;
 
-breakpoint;
+//breakpoint;
 multipush(R0,R1,R2);
 R1=EXIT_PROCESS; //funcNum=3 for exit process
 R2=[SYSTEM_STATUS_TABLE+1];
 call MOD_1; // PROCESS_MANAGER
 multipop(R0,R1,R2);
-breakpoint;
+//breakpoint;
 
 //Get the user area page number from the process table of the current process. This page has been deallocated by the Exit Process function. Reclaim the same page by incrementing the memory free list entry of user area page and decrementing the MEM_FREE_COUNT field in the system status table. (same user area page is reclaimed - why?)
 R4 = [PROCESS_TABLE + [SYSTEM_STATUS_TABLE + 1]*16 + 11];
@@ -82,7 +82,14 @@ if([INODE_TABLE+num*16+8]!=-1) then
 	R5=R0;
 	multipop(R0,R1,R2,R4);
 	//breakpoint;
-	loadi(R5,[INODE_TABLE+num*16+8]);
+	//loadi(R5,[INODE_TABLE+num*16+8]); //updated to load in stage 18
+	multipush(R0,R1,R2,R4,R5);
+	R1=2;
+	R2=[SYSTEM_STATUS_TABLE+1];
+	R3=R5;
+	R4=[INODE_TABLE+num*16+8];
+	call MOD_4;
+	multipop(R0,R1,R2,R4,R5);
 	//breakpoint;
 else
 	[PTBR+8]=-1;
@@ -96,7 +103,14 @@ if([INODE_TABLE+num*16+9]!=-1) then
 	[PTBR+11]="0110";
 	R5=R0;
 	multipop(R0,R1,R2,R4);
-	loadi(R5,[INODE_TABLE+num*16+9]);
+	//loadi(R5,[INODE_TABLE+num*16+9]); //updated to load in stage 18
+	multipush(R0,R1,R2,R4,R5);
+	R1=2;
+	R2=[SYSTEM_STATUS_TABLE+1];
+	R3=R5;
+	R4=[INODE_TABLE+num*16+9];
+	call MOD_4;
+	multipop(R0,R1,R2,R4,R5);
 else
 	[PTBR+10]=-1;
 	[PTBR+11]="0000";
@@ -109,7 +123,14 @@ if([INODE_TABLE+num*16+10]!=-1) then
 	[PTBR+13]="0110";
 	R5=R0;
 	multipop(R0,R1,R2,R4);
-	loadi(R5,[INODE_TABLE+num*16+10]);
+	//loadi(R5,[INODE_TABLE+num*16+10]); //updated to load in stage 18
+	multipush(R0,R1,R2,R4,R5);
+	R1=2;
+	R2=[SYSTEM_STATUS_TABLE+1];
+	R3=R5;
+	R4=[INODE_TABLE+num*16+10];
+	call MOD_4;
+	multipop(R0,R1,R2,R4,R5);
 else
 	[PTBR+12]=-1;
 	[PTBR+13]="0000";
@@ -122,7 +143,14 @@ if([INODE_TABLE+num*16+11]!=-1) then
 	[PTBR+15]="0110";
 	R5=R0;
 	multipop(R0,R1,R2,R4);
-	loadi(R5,[INODE_TABLE+num*16+11]);
+	//loadi(R5,[INODE_TABLE+num*16+11]); //updated to load in stage 18
+	multipush(R0,R1,R2,R4,R5);
+	R1=2;
+	R2=[SYSTEM_STATUS_TABLE+1];
+	R3=R5;
+	R4=[INODE_TABLE+num*16+11];
+	call MOD_4;
+	multipop(R0,R1,R2,R4,R5);
 else
 	[PTBR+14]=-1;
 	[PTBR+15]="0000";
@@ -142,6 +170,22 @@ multipop(R0,R1,R2,R4);
 [PTBR+19]="0110";
 
 [PROCESS_TABLE + [SYSTEM_STATUS_TABLE + 1]*16 + 9] = 0; // set mode flag
+
+//setup per-process resource table for the process
+multipush(R0,R1);
+
+//R0 just stores the word in uaer areaa page where we have to store -1 for marking resource identifier.
+//The last 16 words of the User Area Page are reserved for this.
+
+R0=[PROCESS_TABLE + [SYSTEM_STATUS_TABLE + 1]*16 + 11]*512-1+512-16; //as it is the last 16 words of the user area page
+R1=0;
+
+while(R1<8) do 
+	[R0+2*R1]=-1;
+	R1=R1+1;
+endwhile;
+
+multipop(R0,R1);
 
 //change userSP;
 userSP=[PTBR+16];
