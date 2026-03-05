@@ -1,0 +1,54 @@
+type
+  List
+  {
+    int data;
+    List next;
+  }
+endtype
+
+decl
+    List head;
+enddecl
+
+int main()
+{
+  decl
+    int n, x;
+    List p, q;
+  enddecl
+
+  begin
+    //breakpoint;
+    x = initialize();
+    //breakpoint;
+    head=null;
+    //breakpoint;
+    read(n); 
+
+    q=head;
+    while (n!=0)  do
+      read(x);
+      p=alloc();
+      p.data=x;
+      p.next=null;
+
+      if (head==null) then
+      head=p;
+      q=p;
+      else
+      q.next=p;
+      q=q.next;
+      endif;
+      
+      n=n-1;
+    endwhile;
+
+    p=head;
+    while(p!=null)  do
+      write(p.data);
+      p=p.next;
+    endwhile;
+
+    return 1;
+  end
+}

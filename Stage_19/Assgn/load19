@@ -1,0 +1,2 @@
+load --init ../expl/samples/init17_1.xsm
+load --exec ../expl/samples/ll_19.xsm
