@@ -1,0 +1,43 @@
+//Exit system call first sets the MODE FLAG to the system call number and switches to the kernel stack.
+//It then invokes the Exit Process function present in the process manager module. Finally, Exit system call invokes the scheduler to schedule other processes.
+
+
+//Set the MODE_FLAG in the process table entry to 10.
+
+//Switch to the Kernel Stack. see kernel stack management during system calls
+//Save the value of SP to the USER SP field in the Process Table entry of the process.
+//Set the value of SP to the beginning of User Area Page.
+
+//Invoke the exit_process() function from the Process Manager module.
+
+///* exit_process() releases all the memory pages of the process including the page holding kernel stack.
+//Still, as exit_process is non-blocking, the kernel stack page will not be allocated to another process.
+//This makes it possible to make a final call from the process to the scheduler. There is no return to
+//the process after the following scheduler invocation. */ 
+
+//Invoke the context_switch() function in the Scheduler Module.
+
+
+
+[PROCESS_TABLE + [SYSTEM_STATUS_TABLE + 1]*16 + 13] = SP;
+//alias userSP R0;
+//userSP = SP;
+SP = [PROCESS_TABLE + [SYSTEM_STATUS_TABLE + 1]*16 + 11]*512 - 1;
+[PROCESS_TABLE + [SYSTEM_STATUS_TABLE + 1]*16 + 9] = 10; //set mode flag to syscall number of exit=10
+
+
+R1=EXIT_PROCESS; //=3
+R2=[SYSTEM_STATUS_TABLE+1]; //PID
+call MOD_1; //PROCESS_MODULE
+
+//call MOD_5;
+
+R9=1;
+
+while(R9<16) do
+if([PROCESS_TABLE+16*R9+4]!=TERMINATED) then
+call MOD_5;
+endif;
+R9=R9+1;
+endwhile;
+halt;

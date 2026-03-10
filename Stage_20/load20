@@ -1,0 +1,3 @@
+load --init ../expl/samples/fork20.xsm
+load --exec ../expl/samples/even20.xsm
+load --exec ../expl/samples/odd20.xsm

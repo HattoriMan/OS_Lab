@@ -1,0 +1,22 @@
+int main(){
+decl
+	int t;
+enddecl
+begin
+	t=exposcall("Fork");
+	if(t==0) then
+		//child process
+		write("child");
+		t=exposcall("Exec","odd20.xsm");
+	endif;
+	if(t>0) then
+		//parent process
+		write("parent");
+		t=exposcall("Exec","even20.xsm");
+	endif;
+	if(t==-1) then
+		write("Fork Fail");
+	endif;
+	return 0;
+end
+}

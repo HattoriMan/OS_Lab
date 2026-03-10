@@ -1,0 +1,67 @@
+//context switch module
+
+alias currentPID R0;
+currentPID = [SYSTEM_STATUS_TABLE+1];
+
+multipush(BP);
+
+//Save the KPTR, PTBR and PTLR 
+alias process_table_entry R1;
+process_table_entry = PROCESS_TABLE + [SYSTEM_STATUS_TABLE+1] * 16;
+[process_table_entry + 12] = SP % 512;
+[process_table_entry + 14] = PTBR;
+[process_table_entry + 15] = PTLR;
+
+//round robin scheduling
+alias ctr R15;
+ctr=0;
+alias newPID R2;
+alias newProcessStatus R3;
+newPID = (currentPID+1)%16;
+while(ctr<=16) do
+	//so that we dont run idle before we check each entry
+	if(newPID==0) then
+		newPID = (newPID+1)%16;
+		continue;
+	endif;
+	newProcessStatus = [PROCESS_TABLE + newPID*16 + 4];
+	if(newProcessStatus==READY || newProcessStatus==CREATED) then
+		break;
+	endif;
+	newPID = (newPID+1)%16;
+	ctr=ctr+1;
+endwhile;
+
+//if after checking all process table entries if we dont see any process except idle then we run idle process
+if(ctr>16) then
+	newPID=0;
+endif;
+
+[SYSTEM_STATUS_TABLE + 1] = newPID;
+alias new_process_table R4;
+new_process_table = PROCESS_TABLE + newPID * 16;
+
+//Set back Kernel SP
+SP =  [new_process_table + 11] * 512 + [new_process_table + 12];
+
+//Set back PTBR , PTLR
+PTBR = [new_process_table + 14];
+PTLR = [new_process_table + 15];
+
+//Check if the newly found process is in CREATED state
+if([new_process_table + 4] == CREATED) then
+	breakpoint;
+	[new_process_table + 4] = RUNNING;
+	SP = [new_process_table + 13];
+	BP = [[new_process_table+11]*512]; //BP is saved in Kernel Stack by fork() system call as in stage 20
+	[new_process_table + 9] = 0; //set mode
+	breakpoint;
+	ireturn;
+endif;
+
+//Set the state of the newly found process as RUNNING
+[new_process_table + 4] = RUNNING;
+
+multipop(BP);
+
+return;

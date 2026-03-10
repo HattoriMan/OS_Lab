@@ -1,0 +1,182 @@
+//boot module
+
+R0=0;
+while(R0<83) do
+	[MEMORY_FREE_LIST+R0]=1;
+	R0=R0+1;
+endwhile;
+while(R0<128) do
+	[MEMORY_FREE_LIST+R0]=0;
+	R0=R0+1;
+endwhile;
+
+//lib
+loadi(63,13);
+loadi(64,14);
+
+//init
+loadi(65,7);
+loadi(66,8);
+
+//int=timer
+loadi(4,17);
+loadi(5,18);
+
+//exhandler
+loadi(2,15);
+loadi(3,16);
+
+//int=10
+loadi(22,35);
+loadi(23,36);
+
+//int=7 //for write syscall
+loadi(16,29);
+loadi(17,30);
+
+//exec -not loaded as not reqired
+//loadi(83,69);
+
+//module 0 //resource manager module
+loadi(40,53);
+loadi(41,54);
+
+//module 4 //device manager module
+loadi(48,61);
+loadi(49,62);
+
+//module 5 //scheduler
+loadi(50,63);
+loadi(51,64);
+
+//int=console
+loadi(8,21);
+loadi(9,22);
+
+//int=6 //for read syscall
+loadi(14,27);
+loadi(15,28);
+
+//int=9 //for exec syscall
+loadi(20,33);
+loadi(21,34);
+
+//module 1 //Process Manager
+loadi(42,55);
+loadi(43,56);
+
+//module 2 //Memory Manager
+loadi(44,57);
+loadi(45,58);
+
+//inode table
+loadi(59,3);
+loadi(60,4);
+
+//int=disk
+loadi(6,19);
+loadi(7,20);
+
+//disk-free-list
+loadi(61,2);
+
+//int=8
+loadi(18,31);
+loadi(19,32);
+
+//Load interrupt routine 9, module 1, module 2 and inode table from the disk to the memory.
+//Initialize the memory free list with value 1 for pages used and 0 for free pages.
+//Initialize the fields WAIT_MEM_COUNT to 0 and MEM_FREE_COUNT to number of free pages in the system status table.
+[SYSTEM_STATUS_TABLE+3]=0; //WAIT_MEM_COUNT
+[SYSTEM_STATUS_TABLE+2]=45; //MEM_FREE_COUNT=(127-83+1)
+
+//initialize terminal status table's status to 0(free).
+[TERMINAL_STATUS_TABLE+0]=0;
+
+//initialize disk status table's status to 0(free).
+[DISK_STATUS_TABLE+0]=0;
+
+PTBR = PAGE_TABLE_BASE + 20;
+PTLR = 10;
+
+[PTBR + 0] = 63;
+[PTBR + 1] = "0100";
+[PTBR + 2] = 64;
+[PTBR + 3] = "0100";
+[PTBR + 4] = 78;
+[PTBR + 5] = "0110";
+[PTBR + 6] = 79;
+[PTBR + 7] = "0110";
+[PTBR + 8] = 65;
+[PTBR + 9] = "0100";
+[PTBR + 10] = 66;
+[PTBR + 11] = "0100";
+[PTBR + 12] = -1;
+[PTBR + 13] = "0000";
+[PTBR + 14] = -1;
+[PTBR + 15] = "0000";
+[PTBR + 16] = 76;
+[PTBR + 17] = "0110";
+[PTBR + 18] = 77;
+[PTBR + 19] = "0110";
+
+//user area page address for init
+[PROCESS_TABLE + 16 + 11] = 80;
+//the process ID of the process = 1
+[PROCESS_TABLE + 16 + 1] = 1;
+//set state to running
+[PROCESS_TABLE + 16 + 4] = CREATED;
+//set uptr to 8*512
+[PROCESS_TABLE + 16 + 13] = 8*512;
+//set kptr to 0
+[PROCESS_TABLE + 16 + 12] = 0;
+//set ptbr
+[PROCESS_TABLE + 16 + 14] = PTBR;
+//set ptlr
+[PROCESS_TABLE + 16 + 15] = PTLR;
+
+//save ip for starting of init process in user sp
+[76*512] = [65*512+1];
+
+//setup disk map table for init
+[DISK_MAP_TABLE+10*1+0]=-1; //unused
+[DISK_MAP_TABLE+10*1+1]=-1; //unused
+[DISK_MAP_TABLE+10*1+2]=-1; //heap
+[DISK_MAP_TABLE+10*1+3]=-1; //heap
+[DISK_MAP_TABLE+10*1+4]=7; //code
+[DISK_MAP_TABLE+10*1+5]=8; //code
+[DISK_MAP_TABLE+10*1+6]=-1; //code
+[DISK_MAP_TABLE+10*1+7]=-1; //code
+[DISK_MAP_TABLE+10*1+8]=-1; //stack
+[DISK_MAP_TABLE+10*1+9]=-1; //stack
+
+//setup per-process resource table for the process
+//R0 just stores the word in uaer areaa page where we have to store -1 for marking resource identifier.
+//The last 16 words of the User Area Page are reserved for this.
+
+R0=[PROCESS_TABLE + 1*16 + 11]*512-1+512-16; //as it is the last 16 words of the user area page 
+// PID of INIT is 1
+R1=0;
+
+while(R1<8) do 
+	[R0+2*R1]=-1;
+	R1=R1+1;
+endwhile;
+
+
+[PROCESS_TABLE + 16*2 + 4] = TERMINATED;
+[PROCESS_TABLE + 16*3 + 4] = TERMINATED;
+[PROCESS_TABLE + 16*4 + 4] = TERMINATED;
+[PROCESS_TABLE + 16*5 + 4] = TERMINATED;
+[PROCESS_TABLE + 16*6 + 4] = TERMINATED;
+[PROCESS_TABLE + 16*7 + 4] = TERMINATED;
+[PROCESS_TABLE + 16*8 + 4] = TERMINATED;
+[PROCESS_TABLE + 16*9 + 4] = TERMINATED;
+[PROCESS_TABLE + 16*10 + 4] = TERMINATED;
+[PROCESS_TABLE + 16*11 + 4] = TERMINATED;
+[PROCESS_TABLE + 16*12 + 4] = TERMINATED;
+[PROCESS_TABLE + 16*13 + 4] = TERMINATED;
+[PROCESS_TABLE + 16*14 + 4] = TERMINATED;
+[PROCESS_TABLE + 16*15 + 4] = TERMINATED;
+
+return;
