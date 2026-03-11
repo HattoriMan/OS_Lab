@@ -57,14 +57,15 @@ SP = R4*512-1;
 //setup per-process resource table for the process
 multipush(R0,R1);
 
-//R0 just stores the word in uaer areaa page where we have to store -1 for marking resource identifier.
+//R0 just stores the word in user area page where we have to store -1 for marking resource identifier.
 //The last 16 words of the User Area Page are reserved for this.
 
-R0=[PROCESS_TABLE + [SYSTEM_STATUS_TABLE + 1]*16 + 11]*512-1+512-16; //as it is the last 16 words of the user area page
+R0=[PROCESS_TABLE + [SYSTEM_STATUS_TABLE + 1]*16 + 11]*512+496; //as it is the last 16 words of the user area page
 R1=0;
 
 while(R1<8) do 
 	[R0+2*R1]=-1;
+	[R0+2*R1+1]=-1;
 	R1=R1+1;
 endwhile;
 

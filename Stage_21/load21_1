@@ -1,0 +1,3 @@
+load --init ../expl/samples/shell2.xsm
+load --exec ../expl/samples/asg21_2.xsm
+load --exec ../expl/samples/pid.xsm
