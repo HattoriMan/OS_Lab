@@ -1,0 +1,99 @@
+//int11_21.spl
+
+//At the beginning of interrupt routine 11, extract the system call number from the user stack and switch to the kernel stack.
+//Implement system calls according to the system call number extracted from above step. Steps to implement each system call are explained below.
+//Change back to the user stack and return to the user mode.
+
+alias sysCall R1;
+alias userSP R2;
+userSP=SP;
+sysCall=[[PTBR+2*((userSP-5)/512)]*512+((userSP-5)%512)];
+[PROCESS_TABLE+[SYSTEM_STATUS_TABLE+1]*16+13]=SP; //save userSP
+SP=[PROCESS_TABLE+[SYSTEM_STATUS_TABLE+1]*16+11]*512; //switch to kernel stack
+
+
+if(sysCall==INT_GETPID) then //11 syscall number = getpid
+	[PROCESS_TABLE+[SYSTEM_STATUS_TABLE+1]*16+9]=INT_GETPID; //set MODE FLAG
+	[[PTBR+2*((userSP-1)/512)]*512+((userSP-1)%512)]=[SYSTEM_STATUS_TABLE+1]; //retVal
+	[PROCESS_TABLE+[SYSTEM_STATUS_TABLE+1]*16+9]=0; //reset MODE flag
+endif;
+
+if(sysCall==INT_GETPPID) then //12 syscall number = getppid
+	[PROCESS_TABLE+[SYSTEM_STATUS_TABLE+1]*16+9]=INT_GETPPID; //set MODE FLAG
+	[[PTBR+2*((userSP-1)/512)]*512+((userSP-1)%512)]=[PROCESS_TABLE+[SYSTEM_STATUS_TABLE+1]*16+2]; //retVal
+	[PROCESS_TABLE+[SYSTEM_STATUS_TABLE+1]*16+9]=0; //reset MODE flag
+endif;
+
+if(sysCall==INT_WAIT) then //13 syscall number = wait
+	[PROCESS_TABLE+[SYSTEM_STATUS_TABLE+1]*16+9]=INT_WAIT; //set MODE FLAG
+	alias PID R0;
+	PID=[[PTBR+2*((userSP-4)/512)]*512+((userSP-4)%512)];
+	if(PID==[SYSTEM_STATUS_TABLE+1] || PID>15 || PID < 0 || [PROCESS_TABLE+PID*16+4]==TERMINATED) then
+		[[PTBR+2*((userSP-1)/512)]*512+((userSP-1)%512)]=-1; //retVal
+	else
+		[PROCESS_TABLE+[SYSTEM_STATUS_TABLE+1]*16+4]=WAIT_PROCESS;
+		[PROCESS_TABLE+[SYSTEM_STATUS_TABLE+1]*16+5]=PID;
+		multipush(R0,R1,R2);
+		call MOD_5;
+		///* The following code excutes only when scheduled again after the occurance of a signal/exit of the process waiting for. */
+		multipop(R0,R1,R2);
+		[[PTBR+2*((userSP-1)/512)]*512+((userSP-1)%512)]=0; //retVal
+	endif;
+	[PROCESS_TABLE+[SYSTEM_STATUS_TABLE+1]*16+9]=0; //reset MODE flag
+endif;
+
+if(sysCall==INT_SIGNAL) then //14 syscall number = signal
+	[PROCESS_TABLE+[SYSTEM_STATUS_TABLE+1]*16+9]=INT_SIGNAL; //set MODE FLAG
+	alias PID R0;
+	R0=0;
+	while(R0<16) do
+		if([PROCESS_TABLE+R0*16+4]==WAIT_PROCESS && [PROCESS_TABLE+R0*16+5]==[SYSTEM_STATUS_TABLE+1]) then
+			[PROCESS_TABLE+R0*16+4]=READY;
+		endif;
+		R0=R0+1;
+	endwhile;
+	[[PTBR+2*((userSP-1)/512)]*512+((userSP-1)%512)]=0; //retVal
+	[PROCESS_TABLE+[SYSTEM_STATUS_TABLE+1]*16+9]=0; //reset MODE flag
+endif;
+
+
+SP=userSP; //switch to userSP
+
+ireturn;
+
+
+
+
+//ALGORITHMS
+
+//GET PID
+//Find the PID of the current process from the Process Table.
+//Return the PID of current process.
+
+//GET PPID
+//Find the PPID of the current process from the Process Table.
+//Return the PPID.
+
+//WAIT
+//Set the MODE_FLAG in the process table entry to 13.
+//Switch to the Kernel Stack. 	/* See kernel stack management during system calls */
+//Save the value of SP to the USER SP field in the Process Table entry of the process.
+//Set the value of SP to the beginning of User Area Page.
+//If process is intending to wait for itself or for a non-existent process, return -1.    /* Check the status from Process table.  */ 
+//Change the status from (RUNNING,_ ) to (WAIT_PROCESS, Argument_PID ) in the Process Table.
+//Invoke the Scheduler by calling the switch_context() function in the Scheduler Module.
+///* The following code excutes only when scheduled again after the occurance of a signal/exit of the process waiting for. */
+//Restore SP to the USER SP stored in the process table.
+//Reset the MODE_FLAG in the process table entry to 0.
+//Return 0.  /* Success */
+//Note:  At each point of return from the system call, remember to reset the MODE FLAG and switch back to the user stack.
+
+//SIGNAL
+//Set the MODE_FLAG in the process table entry to 14.
+//Wake up all processes waiting for the current process.
+//    Traverse through the Process Table
+//	If the process is in state (WAIT_PROCESS, Pid) where Pid matches with the PID of the current process.
+//          	Change the status to (READY, _ ).
+//Reset the MODE_FLAG in the process table entry to 0.
+//Return 0.   /* Success */
+

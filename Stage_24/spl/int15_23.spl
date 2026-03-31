@@ -1,0 +1,61 @@
+//Switch to the kernel stack and set the MODE FLAG in the process table to the system call number.
+
+[PROCESS_TABLE+[SYSTEM_STATUS_TABLE+1]*16+13]=SP; //save userSP in UPTR of PROCESS_TABLE
+
+alias userSP R1;
+userSP=SP;
+
+SP=[PROCESS_TABLE+[SYSTEM_STATUS_TABLE+1]*16+11]*512; //set SP to kernel stack
+
+[PROCESS_TABLE+[SYSTEM_STATUS_TABLE+1]*16+9]=15; //set Mode Flag
+
+
+//Shutdown system call can be invoked only from the shell process of the root user. If the current process is not shell (PID in the process table is not equal to 1) or the current user is not root user (USERID in the process table is not equal to 1) then store -1 as return value, reset the MODE FLAG, change the stack to user stack and return to user mode.
+
+if([PROCESS_TABLE+[SYSTEM_STATUS_TABLE+1]*16+1]!=1 || [PROCESS_TABLE+[SYSTEM_STATUS_TABLE+1]*16+3]!=1) then
+	//[PROCESS_TABLE+[SYSTEM_STATUS_TABLE+1]*16+1] stores PID
+	//[PROCESS_TABLE+[SYSTEM_STATUS_TABLE+1]*16+1] stores userID
+	[[PTBR+2*((userSP-1)/512)]*512+((userSP-1)%512)]=-1;
+	
+else
+
+	//Commit the changes made in the memory copies of the inode table (along with user table), the root file and the disk free list by storing them back to the disk invoking the Disk Store function of device manager module. Refer to disk/memory organization for block and page numbers of these data structures. Finally, halt the system using the SPL statement halt.
+	
+	multipush(R1,R2,R3);
+	
+	//storing disk free list in disk
+	R1=1;
+	R2=[SYSTEM_STATUS_TABLE+1];
+	R3=61;
+	R4=2;
+	call MOD_4;
+	
+	//storing inode table in disk
+	R1=1;
+	R2=[SYSTEM_STATUS_TABLE+1];
+	R3=59;
+	R4=3;
+	call MOD_4;
+	
+	//storing inode table in disk
+	R1=1;
+	R2=[SYSTEM_STATUS_TABLE+1];
+	R3=60;
+	R4=4;
+	call MOD_4;
+	
+	//storing root file in disk
+	R1=1;
+	R2=[SYSTEM_STATUS_TABLE+1];
+	R3=62;
+	R4=5;
+	call MOD_4;
+	multipop(R1,R2,R3);
+	
+	halt;
+endif;
+
+
+[PROCESS_TABLE+[SYSTEM_STATUS_TABLE+1]*16+9]=0;
+SP=userSP;
+ireturn;

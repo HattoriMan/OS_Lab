@@ -1,0 +1,103 @@
+//Set the MODE_FLAG in the process table entry to -1 indicate that the process is in the execption handler.
+
+[PROCESS_TABLE + [SYSTEM_STATUS_TABLE + 1]*16 + 9] = -1;
+
+//Switch to the Kernel Stack. 	/* See kernel stack management during system calls */
+//Save the value of SP to the USER SP field in the Process Table entry of the process.
+//Set the value of SP to the beginning of User Area Page.
+
+[PROCESS_TABLE + [SYSTEM_STATUS_TABLE + 1]*16 + 13] = SP;
+
+SP = [PROCESS_TABLE + [SYSTEM_STATUS_TABLE + 1]*16 + 11]*512 - 1;
+
+//Backup the register context of the current process using the BACKUP instruction and push EIP onto the kernel stack.
+
+backup;
+multipush(EIP);
+
+//If (the exception is not caused by a page fault(EC==0) or user stack is full)  /* Check the Exception Cause registers */
+         //Display the cause of the exception.
+	     //Terminate the process using exit_process() module function in the Process Manager module.
+	     //Invoke the scheduler by calling the switch_context() function in the Scheduler Module.
+	     
+if(EC!=0 || [PROCESS_TABLE + [SYSTEM_STATUS_TABLE + 1]*16 + 13]==512*PTLR-1) then
+	if(EC==1) then
+		print("EC==1");
+	endif;
+	if(EC==2) then
+		print("EC==2");
+	endif;
+	if(EC==3) then
+		print("EC==3");
+	endif;
+	R1=EXIT_PROCESS; //=3
+	R2=[SYSTEM_STATUS_TABLE+1]; //PID
+	call MOD_1;
+	call MOD_5; //scheduler
+endif;
+
+///* Exception is due to page fault */
+//Using the Exception registers, find the page number of the page causing the exception.
+//the value is directly in EPN
+
+//If (page corresponds to a code page)
+	//Get the disk block number to load from the Disk Map Table entry of the process.
+	//Load the page to memory by calling the get_code_page() function in the Memory Manager Module.
+	//In the page table entry, set the Page Number field to the page number returned by get_code_page()
+	//Set the referenced and valid bits to 1. Also set the write bit to 0.
+	///* Code pages are not writable */
+
+//print("PF");
+
+if(EPN==4 || EPN==5 || EPN==6 || EPN==7) then
+	multipush(R0);
+	R1=GET_CODE_PAGE; //=5
+	R2=[DISK_MAP_TABLE+10*[SYSTEM_STATUS_TABLE+1]+EPN];
+	call MOD_2;
+	[PTBR+EPN*2]=R0;
+	[PTBR+EPN*2+1]="1100";
+	multipop(R0);
+endif;
+  
+//else if (page corresponds to a heap page)
+	//Allocate 2 new memory pages by calling the get_free_page() function in the Memory Manager module.
+	//In the page table entry, set the Page Number field to the pages allocated above
+	//and auxiliary information to referenced and valid. Also set the write bit to 1.
+	///* Heap is writable */
+
+	
+if(EPN==2 || EPN==3) then
+//technically if ever this is reached then only EPN=2 would be true as both heap pages are allocated together. Hence, we can say EPN==2 always
+//but still i have used both EPN values just to show that both heap pages refer to this for allocation if page fault occurs
+//also note that the code below contains 2,3 as fixed values of the page number for heap
+	multipush(R0);
+	R1=GET_FREE_PAGE; //=1
+	call MOD_2;
+	[PTBR+2*EPN]=R0;
+	[PTBR+2*EPN+1]="1110";
+	multipop(R0);
+	multipush(R0);
+	R1=GET_FREE_PAGE; //=1
+	call MOD_2;
+	[PTBR+2*EPN+2]=R0;
+	[PTBR+2*EPN+3]="1110";
+	multipop(R0);
+endif;
+
+//Pop EIP from the kernel stack and restore the register context of the process using RESTORE instruction.
+multipop(EIP);
+restore;
+
+//Reset the MODE_FLAG back to 0.
+//Restore SP to the USER SP stored in the process table.
+//Increment SP and store EIP onto the location pointed to by SP.
+//ireturn.
+
+[PROCESS_TABLE + [SYSTEM_STATUS_TABLE + 1]*16 + 9] = 0; // set mode flag
+
+SP=[PROCESS_TABLE + [SYSTEM_STATUS_TABLE + 1]*16 + 13];
+SP=SP+1;
+[[PTBR+2*(SP/512)]*512+(SP%512)]=EIP;
+
+
+ireturn;

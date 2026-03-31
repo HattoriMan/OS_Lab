@@ -1,0 +1,216 @@
+//Store user SP switch from user stack to kernel stack and obtain the function number(syscallNumber).
+
+
+alias userSP R0;
+R0=SP;
+alias syscall R1;
+syscall=[[PTBR+2*((userSP-5)/512)]*512+((userSP-5)%512)];
+[PROCESS_TABLE+[SYSTEM_STATUS_TABLE+1]*16+13]=SP;
+SP=[PROCESS_TABLE+[SYSTEM_STATUS_TABLE+1]*16+11]*512;
+
+if(syscall==INT_CREATE) then // create syscall //INT_CREATE=1
+	//Set the MODE_FLAG in the process table entry to 1, indicating that the process is in the create system call.
+
+	[PROCESS_TABLE+[SYSTEM_STATUS_TABLE+1]*16+9]=1; //set mode flag
+
+	alias FileName R1;
+	R1=[[PTBR+2*((userSP-4)/512)]*512+((userSP-4)%512)];
+	alias Permission R2;
+	R2=[[PTBR+2*((userSP-3)/512)]*512+((userSP-3)%512)];
+	R3=0; //will store index of entry if file found else store 60(>=60==MAX_FILE_NUM)
+	R4=-1; //will store -1 if no free entry, else will store free entry index
+	
+	//If the file is present in the system, return 0.   /* Check the Inode Table  */ 
+    //Find the index of a free entry in the Inode Table. 
+	//If no free entry found, return -1.   /* Maximum number of files reached */
+	
+	while(R3<MAX_FILE_NUM) do // search inode
+		alias inodeR3 R7;
+		inodeR3=INODE_TABLE+16*R3; // save inode base
+		if([inodeR3+1]==FileName) then
+			break;
+		endif;
+		if(R4==-1 && [inodeR3+1]==-1) then
+			R4=R3;
+		endif;
+		R3=R3+1;
+	endwhile;
+
+	if(R3>=60) then
+		if(R4!=-1) then
+			alias inodeR4 R7;
+			inodeR4=INODE_TABLE+16*R4; // save inode base
+
+			alias rootR4 R8;
+			rootR4=ROOT_FILE+8*R4; // save root entry base
+
+			//In the Inode Table entry found above, set FILE NAME to the given file name, FILE SIZE to 0 and FILE TYPE to DATA.
+			//In the Inode Table entry, set the block numbers to -1.  /* No disk blocks are allocated to the file */
+			//Set the USER ID to the USERID of the process /* See the process table for user id */
+			//Set the PERMISSION to the permission supplied as input.
+
+			[inodeR4]=DATA; //filetype
+			[inodeR4+1]=FileName; //filename
+			[inodeR4+2]=0; //filesize
+			[inodeR4+3]=[PROCESS_TABLE+[SYSTEM_STATUS_TABLE+1]*16+3]; //userid
+			[inodeR4+4]=Permission; //permission
+			//3 words unused in between
+			//next 4 words represent 4 data blocks address set to -1 initially
+			[inodeR4+8]=-1;
+			[inodeR4+9]=-1;
+			[inodeR4+10]=-1;
+			[inodeR4+11]=-1;
+			//rest 4 words unused
+			
+			//In the Root file entry corresponding to the Inode Table index, 
+			//set the FILE NAME, FILE SIZE, FILE TYPE, USERNAME and PERMISSION fields.
+
+			[rootR4]=FileName; //filename
+			[rootR4+1]=0; //filesize
+			[rootR4+2]=DATA; //filetype
+			[rootR4+3]=[PROCESS_TABLE+[SYSTEM_STATUS_TABLE+1]*16+3]; //userid
+			[rootR4+4]=Permission; //permission
+			//rest 3 words unused
+
+			[[PTBR+2*((userSP-1)/512)]*512+((userSP-1)%512)]=0;
+		else
+			[[PTBR+2*((userSP-1)/512)]*512+((userSP-1)%512)]=-1;
+		endif;
+	else
+		[[PTBR+2*((userSP-1)/512)]*512+((userSP-1)%512)]=0;
+	endif;
+
+	//Set the MODE_FLAG in the process table entry to 0.
+	//Return from the system call with 0.  /* success */
+
+	[PROCESS_TABLE+[SYSTEM_STATUS_TABLE+1]*16+9]=0; //Mode flag
+	SP=userSP;
+	ireturn;
+endif;
+
+if(syscall==INT_DELETE) then // delete syscall //=4
+
+	//Set the MODE_FLAG in the process table entry to 4, indicating that the process is in the delete system call.
+	[PROCESS_TABLE+[SYSTEM_STATUS_TABLE+1]*16+9]=4;
+
+	alias FileName R1;
+	R1=[[PTBR+2*((userSP-4)/512)]*512+((userSP-4)%512)];
+	
+	//Find the index of the file in the Inode Table.      
+	//If file is not present in the Inode Table, return 0. 
+	//If the file is not a DATA file, return -1.
+	
+	R3=0;
+	while(R3<MAX_FILE_NUM) do // search inode
+		alias inodeR3 R7;
+		inodeR3=INODE_TABLE+16*R3; // save inode base
+		if([inodeR3+1]==FileName) then
+			break;
+		endif;
+		R3=R3+1;
+	endwhile;
+
+	if(R3<60) then
+	
+		alias inodeR3 R7;
+		inodeR3=INODE_TABLE+16*R3; // reuse inode base
+
+		if([inodeR3]==DATA) then
+			R2=[PROCESS_TABLE+[SYSTEM_STATUS_TABLE+1]*16+3];
+
+			//If the exclusive permission is set and if the current user is not root and the current user does not own the file return -1. 
+			if([inodeR3+4]==EXCLUSIVE && R2!=[inodeR3+3] && R2!=1) then
+				[[PTBR+2*((userSP-1)/512)]*512+((userSP-1)%512)]=-1;
+			else
+				//Acquire a lock on the file by calling the acquire_inode() function in the Resource Manager module.
+				////////////////////////////////////////////////////////
+				multipush(R0,R1,R2,R3,R7);
+				R1=ACQUIRE_INODE;
+				R3=R3; //argument to pass inodeIdx
+				R2=[SYSTEM_STATUS_TABLE+1]; //pid
+				call MOD_0;
+				multipop(R0,R1,R2,R3,R7);
+				/////////////////////////////////////////////////////////
+				
+				//Check if the the file open count is -1 in the  File Status Table . If not, release the lock and return -2.    /* File is open, cannot be deleted */
+				
+				alias fileStatusR3 R8;
+				fileStatusR3=FILE_STATUS_TABLE+4*R3; // save file status base
+
+				if([fileStatusR3+1]==-1) then
+					
+					//For each disk block allocated to the file, do { 	/* Check Inode Table */
+					//If the disk block is loaded into a buffer, and the DIRTY BIT is set, reset the dirty bit. 	/* Check the Buffer Table */ 
+					//Call the release_block() function in the Memory Manager module to free the disk block. }
+
+					R4=0;
+					while(R4<4) do // release blocks
+						R6=[inodeR3+8+R4];
+						if(R6!=-1) then
+							R5=R6%MAX_BUFFER;
+							alias bufferR5 R9;
+							bufferR5=BUFFER_TABLE+4*R5; // save buffer base
+							if([bufferR5]==R6) then
+								[bufferR5+1]=0;
+							endif;
+							multipush(R0,R1,R2,R3,R4,R7,R9);
+							//////////////////////////////////////////////////////////
+							R1=RELEASE_BLOCK;
+							R3=R6; //block num of disk block to be released
+							R2=[SYSTEM_STATUS_TABLE+1]; //pid
+							call MOD_2;
+							/////////////////////////////////////////////////////////
+							multipop(R0,R1,R2,R3,R4,R7,R9);
+						endif;
+						R4=R4+1;
+					endwhile;
+
+					//Invalidate (set to -1) the Inode Table of the file.
+					[inodeR3+1]=-1;
+
+					//Update the Root file by invalidating the entry for the file.
+					alias rootR3 R8;
+					rootR3=ROOT_FILE+8*R3; // save root entry base
+					[rootR3]=-1;
+
+					//Release the lock on the file by calling the release_inode() function in the Resource Manager module.
+					
+					multipush(R0,R1,R2,R3);
+					/////////////////////////////////////////////////////////////////
+					R1=RELEASE_INODE;
+					R3=R3; //InodeIdx
+					R2=[SYSTEM_STATUS_TABLE+1]; //pid
+					////////////////////////////////////////////////////////////////
+					call MOD_0;
+					multipop(R0,R1,R2,R3);
+					
+					//Switch back to the user stack by reseting USER SP from the process table. Set the MODE_FLAG in the process table entry of the parent process to 0.
+					//Return from system call with 0.    /* indicating success */
+
+					[[PTBR+2*((userSP-1)/512)]*512+((userSP-1)%512)]=0;
+
+				else
+					multipush(R0,R1,R2,R3);
+					//////////////////////////////////////////////////////////////
+					R1=RELEASE_INODE;
+					R3=R3; //InodeIdx
+					R2=[SYSTEM_STATUS_TABLE+1]; //pid
+					call MOD_0;
+					/////////////////////////////////////////////////////////////
+					multipop(R0,R1,R2,R3);
+
+					[[PTBR+2*((userSP-1)/512)]*512+((userSP-1)%512)]=-2;
+				endif;
+			endif;
+		else
+			[[PTBR+2*((userSP-1)/512)]*512+((userSP-1)%512)]=-1;
+		endif;
+	else
+		[[PTBR+2*((userSP-1)/512)]*512+((userSP-1)%512)]=0;
+	endif;
+
+	[PROCESS_TABLE+[SYSTEM_STATUS_TABLE+1]*16+9]=0; //set Mode Flag
+	SP=userSP;
+	ireturn;
+
+endif;

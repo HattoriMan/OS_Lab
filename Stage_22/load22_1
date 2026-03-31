@@ -1,0 +1,2 @@
+load --init ../expl/samples/shell2.xsm
+load --exec ../expl/samples/a22_1.xsm

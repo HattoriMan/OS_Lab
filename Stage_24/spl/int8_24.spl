@@ -1,0 +1,229 @@
+//Set the MODE_FLAG in the process table entry to 8, indicating that the process is in the fork system call.
+//Switch to Kernel Stack - See Kernel Stack Management during System Calls. 
+//Save the value of SP to the USER SP field in the Process Table entry of the process.
+//Set the value of SP to the beginning of User Area Page.
+
+
+
+alias PID R7;
+PID = [SYSTEM_STATUS_TABLE+1];
+
+alias ProcessIdx R15;
+ProcessIdx=PROCESS_TABLE + PID*16;
+
+[ProcessIdx + 9] = 8; //set mode flag to syscall number of fork=8
+
+[ProcessIdx + 13] = SP;
+
+alias userSP R5;
+userSP = SP;
+
+SP = [ProcessIdx + 11]*512 - 1;
+
+
+//Allocate memory and set the Process Table
+//Find a free Process Table entry by invoking the get_pcb_entry() function in Process Manager module. 
+//If no free entry is found, return -1.
+
+alias newPID R6;
+
+multipush(R5,R7,R15);
+R1=GET_PCB_ENTRY; //=1
+call MOD_1; // PROCESS_MANAGER
+newPID=R0;
+multipop(R5,R7,R15);
+
+
+if(newPID==-1) then
+	SP = userSP;
+	[ProcessIdx + 9] = 0; //set mode flag
+	[[PTBR + 2*(userSP-1)/512]*512 + ((userSP-1)%512)]=-1; //set retVal
+	ireturn;
+endif;
+
+//NOTE R0 now contains the PID of the child process
+
+///* The parent and the child must share the heap.  Hence, if heap pages were not allocated for the parent so far, allocate it now. */
+//If heap pages are not allocated for the parent process,
+//then allocate 2 heap pages for the parent using the get_free_page() function in Memory Manager module
+//and set the page table entries for the heap pages of the parent.
+
+if([PTBR+4]==-1) then
+	multipush(R5,R6,R7,R15);
+	R1=GET_FREE_PAGE; //GET_FREE_PAGE=1
+	call MOD_2; // MEMORY_MANAGER
+	[PTBR+4]=R0; //return value = free page allocated
+	multipop(R5,R6,R7,R15);
+	[PTBR+5]="1110";
+endif;
+if([PTBR+6]==-1) then
+	multipush(R5,R6,R7,R15);
+	R1=GET_FREE_PAGE; //GET_FREE_PAGE=1
+	call MOD_2; // MEMORY_MANAGER
+	[PTBR+6]=R0; //return value = free page allocated
+	multipop(R5,R6,R7,R15);
+	[PTBR+7]="1110";
+endif;
+
+
+//Invoke the get_free_page() function in Memory Manager module to obtain 3 memory pages: 2 for user stack and 1 for User Area Page of the child process.
+
+
+//first invoking only for user area page
+alias uap R8; //userAreaPage
+multipush(R5,R6,R7,R15);
+R1=GET_FREE_PAGE; //GET_FREE_PAGE=1
+call MOD_2; // MEMORY_MANAGER
+[PROCESS_TABLE+16*newPID+11]=R0;
+uap=R0; //return value = free page allocated
+multipop(R5,R6,R7,R15);
+
+
+//Copy the parent's Process Table Entry except TICK, PID, PPID, USER AREA PAGE NUMBER, KERNEL STACK POINTER, INPUT BUFFER, PTBR and PTLR to the child. 
+//Set the PPID field of child process to the current PID. Also set User Area Page Number to the new UA Page, MODE, TICK and Kernel Stack Pointer to 0. 
+///* Kernel Context of the child process is empty */
+///* PID, PTBR, PTLR fields of the child's process table is initialized by the get_pcb_entry function.*/ 
+
+[PROCESS_TABLE + 16*newPID] = 0; //Tick
+//[PROCESS_TABLE + 16*newPID+1] = [ProcessIdx+1]; //PID set in GET_PCB_ENTRY function
+[PROCESS_TABLE + 16*newPID+2] = PID; //PPID
+[PROCESS_TABLE + 16*newPID+3] = [ProcessIdx+3]; //UserID
+//[PROCESS_TABLE + 16*newPID+4] = CREATED; //State:takes 2 words
+[PROCESS_TABLE + 16*newPID+6] = [ProcessIdx+6]; //SwapFlag
+[PROCESS_TABLE + 16*newPID+7] = [ProcessIdx+7]; //InodeIndex
+//[PROCESS_TABLE + 16*newPID+8] = [ProcessIdx+8]; //InputBuffer not required to be initialized
+[PROCESS_TABLE + 16*newPID+9] = 0; //ModeFlag
+[PROCESS_TABLE + 16*newPID+10] = [ProcessIdx+10]; //UserAreaSwapStatus
+[PROCESS_TABLE + 16*newPID+11] = uap; //userAreaPageNumber
+[PROCESS_TABLE + 16*newPID+12] = 0; //kernelStackPointer-KPTR
+[PROCESS_TABLE + 16*newPID+13] = [ProcessIdx+13]; //userStackPointer-UPTR
+//[PROCESS_TABLE + 16*newPID+14] = [ProcessIdx+14]; //PTBR set in GET_PCB_ENTRY function
+//[PROCESS_TABLE + 16*newPID+15] = [ProcessIdx+15]; //PTLR set in GET_PCB_ENTRY function
+
+
+//Copy the per-process resource table and per-process disk map table.
+//NOTE NEXT 3 STEPS IN LATER STAGES
+//For every open file of the parent, increment the Open Instance Count in the Open File Table.
+//For every semaphore acquired by the parent, increment Process Count in the Semaphore Table.
+///* The child shares open files and acquired semaphores with the parent */
+
+//setup per-process resource table for the child process
+//multipush(R5,R6,R7,R8,R15);
+
+R2=[PROCESS_TABLE + newPID*16 + 11]*512+496; //as it is the last 16 words of the user area page
+R1=0;
+
+while(R1<16) do 
+	[R2+R1]=[([ProcessIdx + 11]*512+496)+R1]; //copy from parent process;
+	if(R1%2==0 && [R2+R1]==SEMAPHORE) then
+		[SEMAPHORE_TABLE+[R2+R1+1]*4+1]=[SEMAPHORE_TABLE+[R2+R1+1]*4+1]+1; //increments process count in semaphore table
+	endif;
+	///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+	if(R1%2==0 && [R2+R1]==FILE) then
+		[OPEN_FILE_TABLE+[R2+R1+1]*4+1]=[OPEN_FILE_TABLE+[R2+R1+1]*4+1]+1; //increments open instance count in open file table
+	endif;
+	///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+	R1=R1+1;
+endwhile;
+
+//multipop(R5,R6,R7,R8,R15);
+
+
+//setup per-process disk map table for the child process
+//multipush(R5,R6,R7,R8,R15);
+
+R1=0;
+
+while(R1<10) do 
+	[DISK_MAP_TABLE+10*newPID+R1]=[DISK_MAP_TABLE+10*PID+R1]; //copy from parent process;
+	R1=R1+1;
+endwhile;
+
+//multipop(R5,R6,R7,R8,R15);
+
+
+//Set Page Tables
+//Copy the page table entries (code, heap and library) from the parent's page 
+//table to the child  /* Shared between parent and child */
+///* Code and Library Pages must be shared read only */
+//For each page shared, increment its value in the Memory Free List
+//Set the page table entries for stack to the pages acquired.
+
+
+//library, heap, code
+R0=0;
+while(R0<16) do
+	[PAGE_TABLE_BASE+20*newPID+R0]=[PTBR+R0];
+	[PAGE_TABLE_BASE+20*newPID+R0+1]=[PTBR+R0+1];
+	if([PAGE_TABLE_BASE+20*newPID+R0]!=-1) then
+		[MEMORY_FREE_LIST+[PTBR+R0]]=[MEMORY_FREE_LIST+[PTBR+R0]]+1;
+	endif;
+	R0=R0+2;
+endwhile;
+
+
+//stack
+multipush(R5,R6,R7,R8,R15);
+R1=GET_FREE_PAGE; //GET_FREE_PAGE=1
+call MOD_2; // MEMORY_MANAGER
+[PAGE_TABLE_BASE+newPID*20+16]=R0; //return value = free page allocated
+multipop(R5,R6,R7,R8,R15);
+[PAGE_TABLE_BASE+newPID*20+17]=[PTBR+17];
+multipush(R5,R6,R7,R8,R15);
+R1=GET_FREE_PAGE; //GET_FREE_PAGE=1
+call MOD_2; // MEMORY_MANAGER
+[PAGE_TABLE_BASE+newPID*20+18]=R0; //return value = free page allocated
+multipop(R5,R6,R7,R8,R15);
+[PAGE_TABLE_BASE+newPID*20+19]=[PTBR+19];
+
+
+//Copy word by word the contents of the parent user stack to that of the child.
+
+//multipush(R5,R6,R7,R8,R15);
+R2=[PAGE_TABLE_BASE+newPID*20+16]*512;
+R3=[PTBR+16]*512;
+R4=0;
+while(R4<512) do 
+	[R2+R4]=[R3+R4];
+	R4=R4+1;
+endwhile;
+R2=[PAGE_TABLE_BASE+newPID*20+18]*512;
+R3=[PTBR+18]*512;
+R4=0;
+while(R4<512) do 
+	[R2+R4]=[R3+R4];
+	R4=R4+1;
+endwhile;
+//multipop(R5,R6,R7,R8,R15);
+
+
+//Store the current BP value to the begining of the kernel stack of child process.
+///* According to the ExpL calling convention, the BP register is not saved in the user stack. 
+//This value is saved here so that the context switch module can restore it when the child is run. */
+
+[uap*512]=BP;
+       
+//Set the return value to 0 for the child process
+//The PID of the child process is set as the return value for the parent process
+//Set state of child process to (CREATED, _ ).
+//Set the MODE_FLAG in the process table entry of the parent process to 0.
+//Restore SP to User SP and return to the parent process.
+
+//child process
+//alias newUserSP R9;
+//newUserSP=[PROCESS_TABLE + newPID*16 + 13]; //=userSP as SP hasnt been changed
+[[PAGE_TABLE_BASE + newPID*20 + 2*(userSP-1)/512]*512 + ((userSP-1)%512)]=0; //set retVal
+[PROCESS_TABLE + 16*newPID+4] = CREATED; //State:takes 2 words
+
+//parent process
+[ProcessIdx + 9] = 0; //set mode flag
+[[PTBR + 2*(userSP-1)/512]*512 + ((userSP-1)%512)]=newPID; //set retVal
+SP = userSP;
+
+//breakpoint;
+
+ireturn;
+
+
+	
+//Note:  At each point of return from the system call, remember to reset the MODE FLAG and switch back to the user stack.

@@ -1,0 +1,107 @@
+alias funcNum R1;
+alias WAIT_MEM_COUNT R4;
+alias MEM_FREE_COUNT R5;
+WAIT_MEM_COUNT=[SYSTEM_STATUS_TABLE+3];
+MEM_FREE_COUNT=[SYSTEM_STATUS_TABLE+2];
+
+if(funcNum==1) then //get free page
+	//WAIT_MEM_COUNT=WAIT_MEM_COUNT+1;
+	[SYSTEM_STATUS_TABLE+3]=[SYSTEM_STATUS_TABLE+3]+1;
+	//while(MEM_FREE_COUNT==0) do
+	while([SYSTEM_STATUS_TABLE+2]==0) do
+		[PROCESS_TABLE+[SYSTEM_STATUS_TABLE+1]*16+4]=WAIT_MEM;
+		multipush(R1,R4,R5);
+		call MOD_5; //SCHEDULER
+		multipop(R1,R4,R5);
+	endwhile;
+	//WAIT_MEM_COUNT=WAIT_MEM_COUNT-1;
+	[SYSTEM_STATUS_TABLE+3]=[SYSTEM_STATUS_TABLE+3]-1;
+	//MEM_FREE_COUNT=MEM_FREE_COUNT-1;
+	[SYSTEM_STATUS_TABLE+2]=[SYSTEM_STATUS_TABLE+2]-1;
+	R2=83;
+	while(R2<128) do
+		if([MEMORY_FREE_LIST+R2]==0) then
+			R0=R2;
+			[MEMORY_FREE_LIST+R2]=1;
+			break;
+		endif;
+		R2=R2+1;
+	endwhile;
+endif;
+
+if(funcNum==2) then //RELEASE_PAGE
+	[MEMORY_FREE_LIST+R2]=[MEMORY_FREE_LIST+R2]-1;
+	if([MEMORY_FREE_LIST+R2]==0) then
+		//MEM_FREE_COUNT=MEM_FREE_COUNT+1;
+		[SYSTEM_STATUS_TABLE+2]=[SYSTEM_STATUS_TABLE+2]+1;
+	endif;
+	R3=0;
+	while(R3<16) do
+		if([PROCESS_TABLE+R3*16+4]==WAIT_MEM) then
+			[PROCESS_TABLE+R3*16+4]=READY;
+		endif;
+		R3=R3+1;
+	endwhile;
+endif;
+
+if(funcNum==4) then //release block
+	//Set the Disk Free List entry corresponding to the block to 0.
+	//return;
+	[DISK_FREE_LIST+R3]=0; //R3 has block to be released 
+endif;
+
+if(funcNum==5) then //get code page
+	///* If the required code page is already loaded by some other process, we simply increment the share count in the Mem Free List */
+	//Loop though code page entries in the disk map table of all processes
+	//	If (the block number in the Disk Map Table entry matches the 
+	//	block to be loaded, and it's corresponding page table entry is set to VALID) {
+	//		increment the share count of the page in the Mem Free List.
+	//		return the physical page number
+	//	}
+	///* The code page is not in memory, and has to be loaded from disk */
+	//Get a free memory page by calling the get_free_page() function.
+	//Load the disk block into memory page by calling the disk_load() function in the Device Manager Module.
+	//Return the memory page number to which the code block has been loaded.
+	
+	R0=-1;
+	R4=0;
+	while(R4<MAX_PROC_NUM) do //10*16
+		R5=4;
+		while(R5<8) do 
+			if([DISK_MAP_TABLE+R4*10+R5]==R2 && [PAGE_TABLE_BASE+R4*20+R5*2]!=-1) then 
+			//as page table as 2 words for each page while disk map table has just 1 word and corresponding pids hence would be taken care of
+				[MEMORY_FREE_LIST+R4*10+R5]=[MEMORY_FREE_LIST+R4*10+R5]+1;
+				R0=[PAGE_TABLE_BASE+R4*20+R5*2];
+				break;
+			endif;
+			R5=R5+1;
+		endwhile;
+		R4=R4+1;
+	endwhile;
+	if(R0!=-1) then
+		return;
+	endif;
+	
+	
+	//getfreepage
+	multipush(R0,R1,R2);
+	R1=GET_FREE_PAGE; //GET_FREE_PAGE=1
+	call MOD_2; // MEMORY_MANAGER
+	R3=R0; //the memory page to load the disk block in
+	multipop(R0,R1,R2);
+	
+	R4=R2; //stores disk block number
+	//diskload
+	multipush(R0,R1,R2,R3,R4);
+	R1=2;
+	R2=[SYSTEM_STATUS_TABLE+1]; //no need as R2 already has the PID
+	R3=R3;
+	R4=R4;
+	call MOD_4;
+	multipop(R0,R1,R2,R3,R4);
+
+	R0=R3; //set retVal=memoryPageNum
+	
+endif;
+
+return;

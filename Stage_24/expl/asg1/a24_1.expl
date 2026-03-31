@@ -1,0 +1,25 @@
+int main()
+{
+    decl
+        int temp;
+        int fd;
+        string FileName, t1;
+    enddecl
+
+    begin
+        //FileName="numbers.dat";
+        read(FileName);
+        fd = exposcall("Open",FileName);
+        temp = exposcall("Read",fd,t1);
+        write(t1);
+        //write("Hello");
+        temp = exposcall("Read",fd,t1);
+        //write("H1");
+        write(t1);
+        //write("Hello");
+        temp = exposcall("Read",fd,t1);
+        write(t1);
+        //write("Hello");
+        return 0;
+    end
+}

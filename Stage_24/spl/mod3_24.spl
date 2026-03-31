@@ -1,0 +1,342 @@
+// Function number alias
+alias functionNum R1;
+
+
+// ================= OPEN =================
+if (functionNum == OPEN) then
+    alias FileName R2;
+    R3 = 0;
+    // Search inode table for file's entry
+    while (R3 < MAX_FILE_NUM) do
+        if ([INODE_TABLE + 16 * R3 + 1] == FileName) then
+            break;
+        endif;
+        R3=R3+1;
+    endwhile;
+
+    if (R3<MAX_FILE_NUM) then
+    	//File's Entry Found in Inode Table
+    	
+        // Acquire inode lock
+        /////////////////////////////////////////////////////////////
+        multipush(R1, R2, R3);
+        R1 = ACQUIRE_INODE;
+        R3 = R3; //inodeIndex
+        R2 = [SYSTEM_STATUS_TABLE + 1]; //PID
+        call MOD_0;
+        multipop(R1, R2, R3);
+        ////////////////////////////////////////////////////////////
+
+        if(R0==-1) then
+            // Lock failed
+            R0=-1; //retVal
+        else
+            // Reject EXEC files
+            if([INODE_TABLE+16*R3]==EXEC) then
+
+				////////////////////////////////////////////////////////////
+                multipush(R1, R2, R3);
+                R1 = RELEASE_INODE;
+                R3 = R3; //inodeIndex
+        		R2 = [SYSTEM_STATUS_TABLE + 1]; //PID
+                call MOD_0;
+                multipop(R1, R2, R3);
+                ////////////////////////////////////////////////////////////
+                
+                R0 = -1; //retVal
+
+            else
+                // Find free open file entry
+                R4 = 0;
+                while (R4 < MAX_OPENFILE_NUM) do
+                    if ([OPEN_FILE_TABLE+4*R4]==-1) then
+                        break;
+                    endif;
+                    R4=R4+1;
+                endwhile;
+
+                if (R4 < MAX_OPENFILE_NUM) then
+                    // Root file special handling
+                    if (FileName == "root") then
+                        [OPEN_FILE_TABLE+4*R4]=INODE_ROOT;
+                    else
+                        // Set inode index
+                        [OPEN_FILE_TABLE+4*R4]=R3;
+
+                        // Update file open count
+                        if ([FILE_STATUS_TABLE+4*R3+1]==-1) then
+                            [FILE_STATUS_TABLE+4*R3+1]=1;
+                        else
+                            [FILE_STATUS_TABLE+4*R3+1]=[FILE_STATUS_TABLE+4*R3+1]+1;
+                        endif;
+                    endif;
+
+                    // Initialize open instance
+                    [OPEN_FILE_TABLE+4*R4+1]=1;   // Open Instance count = 1
+                    [OPEN_FILE_TABLE+4*R4+2]=0;   // LSEEK = 0
+                    R0=R4; //retVal the open file table index
+                else
+                    // Open File Table full
+                    R0=-2; //retVal
+                endif;
+
+                // Release inode lock
+                ////////////////////////////////////////////////////////////
+                multipush(R0, R1, R2, R3, R4);
+                R1 = RELEASE_INODE;
+                R3 = R3; //inodeIndex
+        		R2 = [SYSTEM_STATUS_TABLE + 1]; //PID
+                call MOD_0;
+                multipop(R0, R1, R2, R3, R4);
+                ////////////////////////////////////////////////////////////
+            endif;
+        endif;
+    else
+        // File not found
+        R0 = -1;
+    endif;
+    
+    return;
+endif;
+
+
+// ================= CLOSE =================
+
+if (functionNum == CLOSE) then
+    alias FileTableEntry R3;
+    // Locate open file entry
+    FileTableEntry=OPEN_FILE_TABLE+4*R2;
+    
+    // Decrement open instance count
+    [FileTableEntry+1]=[FileTableEntry+1]-1;
+
+    // If this was the last instance
+    if ([FileTableEntry+1]==0) then
+
+        // Invalidate entry
+        [FileTableEntry+1]=-1; //Open file Instance
+        [FileTableEntry+2]=-1; //LSEEK
+
+        alias fileStatus R4;
+
+        // Locate file status entry
+        fileStatus=FILE_STATUS_TABLE+4*[FileTableEntry];
+
+        // Decrement file open count (except root)
+        if([INODE_TABLE+16*[FileTableEntry]+1]!="root" && [fileStatus+1]>0) then
+            [fileStatus+1]=[fileStatus+1]-1;
+        endif;
+
+        // If no process has file open
+        if ([fileStatus+1]==0) then
+            [fileStatus]=-1;
+        endif;
+
+		// Invalidate entry of inode index in open file table
+        // Clear inode index
+        [FileTableEntry] = -1;
+    endif;
+    
+    return;
+endif;
+
+
+// ================= BUFFERED_READ / BUFFERED_WRITE =================
+
+if (functionNum == BUFFERED_READ || functionNum == BUFFERED_WRITE) then
+
+    // Arguments
+    alias block   R2;   // Disk block number
+    alias offset  R3;   // Offset inside block
+    alias address R4;   // Memory word / physical address
+
+    // Acquire buffer lock
+    ///////////////////////////////////////////////////////////////////////////////////////////////////////////////// Take car of order of arguments
+    multipush(R1, R2, R3, R4);
+    R1 = ACQUIRE_BUFFER;
+    R3 = R2 % 4;                              // Buffer number = block % 4
+    R2 = [SYSTEM_STATUS_TABLE + 1];           // PID
+    call MOD_0;
+    multipop(R1, R2, R3, R4);
+	//////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+
+    // Check if required block is not already in buffer
+    if ([BUFFER_TABLE+4*(R2%4)]!=R2) then
+
+        // If buffer is dirty, write back to disk
+        if ([BUFFER_TABLE+4*(R2%4)+1]==1) then //check dirty bit
+            
+            multipush(R1, R2, R3, R4);
+            /////////////////////////////////////////////////////////////////////////////////////////////////////////
+            // Get old block number
+            R4 = [BUFFER_TABLE+4*(R2%4)]; //Block Num
+            R1 = DISK_STORE;			  //function Num
+            R3 = BUFFER_BASE+(R2%4);      // Buffer memory page //BUFFER_BASE=71
+            R2 = [SYSTEM_STATUS_TABLE+1]; // PID
+            call MOD_4;                         // Device manager
+            /////////////////////////////////////////////////////////////////////////////////////////////////////////
+            multipop(R1, R2, R3, R4);
+
+            // Mark buffer clean
+            [BUFFER_TABLE+4*(R2%4)]=-1;  //Block Number
+            [BUFFER_TABLE+4*(R2%4)+1]=0; //Dirty Bit
+
+        endif;
+
+
+
+        // Load required block into buffer
+        multipush(R1, R2, R3, R4);
+        /////////////////////////////////////////////////////////////////////////////////////////////////////////////
+        R4 = R2;                              			// Block number
+        R1 = DISK_LOAD;						  			// Function Number
+        R3 = BUFFER_BASE+(R2%4);                    	// Buffer page //BUFFER_BASE=71
+        R2 = [SYSTEM_STATUS_TABLE + 1];       			// PID
+        call MOD_4;
+        /////////////////////////////////////////////////////////////////////////////////////////////////////////////
+        multipop(R1, R2, R3, R4);
+
+        // Update buffer table
+        [BUFFER_TABLE+4*(R2%4)]=R2;  //Block Number
+        [BUFFER_TABLE+4*(R2%4)+1]=0; // Dirty Bit
+
+    endif;
+
+    if (functionNum == BUFFERED_WRITE) then
+    	
+    	// ================= WRITE =================
+
+        // Write word into buffer
+        [(BUFFER_BASE+(R2%4))*512+offset]=address; //BUFFER_BASE=71   //To store word given //////////////////////////////// ==CHECK THIS== ////////////////////////////////////////////////////
+
+        // Mark buffer dirty
+        [BUFFER_TABLE+4*(R2%4)+1]=1;
+
+    else
+
+        // ================= READ =================
+
+        // Read word from buffer
+        R5 = [(BUFFER_BASE+(R2%4))*512+offset]; //BUFFER_BASE=71
+
+        // Copy to physical memory
+        [[PTBR+2*address/512]*512+address%512]=R5;
+
+    endif;
+
+
+
+    // Release buffer lock
+    multipush(R1, R2, R3, R4, R5);
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////
+    R1 = RELEASE_BUFFER;            //function Number
+    R3 = R2 % 4;					//bufferNumber
+    R2 = [SYSTEM_STATUS_TABLE + 1]; //PID
+    call MOD_0;
+    /////////////////////////////////////////////////////////////////////////////////////////////////////////
+    multipop(R1, R2, R3, R4, R5);
+
+    return;
+
+endif;
+
+
+
+
+
+
+
+// ================= OPEN =================
+
+// Find the index of the Inode Table entry of the file. If the entry is not found, return -1.
+
+// Call the acquire_inode() function in the Resource Manager module.   /* Lock the inode */
+// If the locking fails, return -1. 
+
+// If the file is of type EXEC, release_inode() and return -1. 	/* Only data files can be opened */
+
+// Find a free entry in the Open File Table.
+// If there are no free entries, release_inode() and return -2.  /* Reached maximum number of open files in the system. */
+
+// If the file name is "root" then 
+// 	Set the INODE INDEX field in the open file table entry to INODE_ROOT. 
+// else
+// 	In the File Status Table, if the File Open Count is -1, set it to 1. Otherwise, increment the File Open Count.
+// 	Set the INODE INDEX field in the open file table entry to the inode table index of the file. 
+
+// Set the OPEN INSTANCE COUNT to 1 and LSEEK to 0 in the open file table entry.
+
+// Call the release_inode() function in the Resource Manager module.   /* Free the inode */
+
+// return the Open File Table Index.
+
+
+
+// ================= CLOSE =================
+
+// Find the index of the Inode Table entry of the file from the Open File Table.
+
+// In the Open File Table Entry, decrement the Open Instance Count.
+
+// If the Open Instance Count becomes 0
+// 	Invalidate the entry by setting all fields to -1.
+// 	If the file is not the "root", decrement the File Open Count in the File (Inode) Status Table.
+// 	If the File Open Count in File Status Table becomes 0, set it to -1.
+// 	/* Check the INODE_INDEX field in the Open File Table entry */
+
+// return;
+
+
+// ============ BUFFERED_READ ==============
+
+// Identify the buffer ; 			
+// /* Buffer Number = (Disk Number % 4) is a simple scheme, good enough for our purposes. More efficient schemes are used in real systems */
+
+// Acquire the buffer by calling the Acquire_Buffer() function in the Resource Manager module;
+
+// if (the buffer contains a different disk block){  			/* check block number in Buffer Table. */
+    
+//     if (the buffer contents are dirty){					/* check DIRTY BIT of buffer table */
+//             Write back the contents of the buffer to the disk by invoking disk_store() function in the device manager module;
+            
+//             Mark the buffer as clean in the corresponding buffer table entry;
+//     }
+    
+//     Load the required disk block into the buffer by invoking the disk_load() function in the device manager module;
+
+//     Set the new Disk block number in the Buffer table entry;
+// }
+
+// Copy the contents in the offset location in the buffer to the physical address given as input; 
+    
+// Release the buffer by calling the Release_Buffer() function in the Resource Manager module;
+
+// return;
+
+
+// ============ BUFFERED_WRITE =============
+
+// Identify the buffer ; 			
+// /* Buffer Number = (Disk Number % 4) is a simple scheme, good enough for our purposes. More efficient schemes are used in real systems */
+
+// Acquire the buffer by calling the Acquire_Buffer() function in the Resource Manager module;
+
+// if (the buffer contains a different disk block){  			/* check block number in Buffer Table. */
+    
+//     if (the buffer contents are dirty){					/* check DIRTY BIT of buffer table */
+//             Write back the contents of the buffer to the disk by invoking disk_store() function in the device manager module;
+//     }
+    
+//     Load the required disk block into the buffer by invoking the disk_load() function in the device manager module;
+
+//     Set the new Disk block number in the Buffer table entry;
+// }
+
+// Write the contents of the word taken as input into the offset location in the buffer; 
+
+// Mark the buffer as Dirty;
+
+// Release the buffer by calling the Release_Buffer() function in the Resource Manager module;
+
+// return;

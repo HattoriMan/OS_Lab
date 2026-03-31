@@ -1,0 +1,4 @@
+load --init ../expl/samples/shell2.xsm
+load --exec ../expl/samples/a24_1.xsm
+load --data ../sample.dat
+load --data ../numbers.dat

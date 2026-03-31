@@ -1,0 +1,70 @@
+//int13_22.spl
+alias userSP R15;
+userSP = SP;
+
+alias PID R14;
+PID = [SYSTEM_STATUS_TABLE+1];
+[PROCESS_TABLE + PID*16 + 13] = SP;
+
+SP = [PROCESS_TABLE + PID*16 + 11]*512;
+
+alias fn R13;
+fn=[[PTBR+2*(userSP-5)/512]*512+(userSP-5)%512];
+
+if(fn==17) then //SemGet
+	[PROCESS_TABLE+PID*16+9]=17; //Mode Flag
+	R12=0; //index of resource table of process to be used
+	R11=[PROCESS_TABLE + PID*16 + 11]*512+496; //starting value of resource table of process
+	while(R12<8) do
+		if([R11+R12*2]==-1) then
+			break;
+		endif;
+		R12=R12+1;
+	endwhile;
+	if(R12>=8) then
+		[[PTBR+2*(userSP-1)/512]*512+(userSP-1)%512]=-1; //set retVal =-1 if no free entry found in resource table
+	else
+		//call to MOD0 Resource Manager Module for ACQUIRE_SEMAPHORE = 6
+		
+		multipush(R11,R12,R13,R14,R15);
+		R1=ACQUIRE_SEMAPHORE; //= 6
+		R2=PID;
+		call MOD_0;
+		multipop(R11,R12,R13,R14,R15);
+		
+		if(R0==-1) then
+			[[PTBR+2*(userSP-1)/512]*512+(userSP-1)%512]=-2; //set retVal =-2 if no free entry found in semaphore table
+		else
+			[R11+R12*2]=SEMAPHORE; //indicates use by SEMAPHORE(==1);
+			[R11+R12*2+1]=R0; //store the semaphore table index in the per process resource table 
+			[[PTBR+2*(userSP-1)/512]*512+(userSP-1)%512]=R12; //Return the Per-process Resource Table entry index.   /* Semaphore Descriptor */
+		endif;
+		
+	endif;
+endif;
+
+if(fn==18) then //SemRelease
+	[PROCESS_TABLE+PID*16+9]=18; //Mode Flag
+	R12=[[PTBR+2*(userSP-4)/512]*512+(userSP-4)%512]; //index of resource table of process which has the semaphore
+	R11=[PROCESS_TABLE + PID*16 + 11]*512+496; //starting value of resource table of process
+	if(R12>7 || R12<0 || [R11+R12*2]!=1) then
+		[[PTBR+2*(userSP-1)/512]*512+(userSP-1)%512]=-1; //set retVal =-1 if invalid entry found in resource table
+	else
+		multipush(R11,R12,R13,R14,R15);
+		R1=RELEASE_SEMAPHORE; //=7
+		R3=[R11+R12*2+1]; //semaphore table index
+		R2=PID;
+		call MOD_0; //Resource Manager
+		multipop(R11,R12,R13,R14,R15);
+		[R11+R12*2]=-1;
+		[R11+R12*2+1]=-1;
+		// CAN ALSO ADD [R11+R12*2+1]=-1; //THE INDEX FIELD IN THE RESOURCE TABLE
+		[[PTBR+2*(userSP-1)/512]*512+(userSP-1)%512]=0; //set retVal=0 
+	endif;
+endif;
+
+
+[PROCESS_TABLE+PID*16+9]=0; //Mode Flag
+SP=userSP;
+
+ireturn;

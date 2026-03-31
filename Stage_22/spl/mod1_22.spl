@@ -1,0 +1,149 @@
+//mod1_22.spl
+
+alias funcNum R1;
+
+if(funcNum==1) then //get pcb entry
+	R0=0;
+	while(R0<16) do
+		if([PROCESS_TABLE+R0*16+4]==TERMINATED) then
+			[PROCESS_TABLE+R0*16+1]=R0; //set PID
+			[PROCESS_TABLE+R0*16+4]=ALLOCATED; //set state
+			[PROCESS_TABLE+R0*16+14]=PAGE_TABLE_BASE+R0*20; //set PTBR
+			[PROCESS_TABLE+R0*16+15]=10; //set PTLR
+			break;
+		endif;
+		R0=R0+1;
+	endwhile;
+	if(R0==16) then
+		R0=-1; //set retVal if not found to -1 else R0 already stores the value
+	endif;
+endif;
+
+if(funcNum==2) then //free User Area Page
+	alias PID R2;
+	R3=[PROCESS_TABLE+PID*16+11];
+	R4=R3*512+496; //Resource Table
+	R5=0;
+	while(R5<8) do
+		if([R4+R5*2]==SEMAPHORE) then
+			multipush(R1,R2,R3,R4,R5);
+			R1=RELEASE_SEMAPHORE; //=7
+			R3=[R4+R5*2+1]; //Semaphore index
+			R2=[SYSTEM_STATUS_TABLE+1]; //PID
+			call MOD_0; //Resource Manger: Release Semaphore
+			multipop(R1,R2,R3,R4,R5);
+		endif;
+		R5=R5+1;
+	endwhile;	
+	multipush(R1,R2,R3);
+	R1=RELEASE_PAGE; //=2
+	R2=R3;
+	call MOD_2; //MEMORY_MANAGER
+	multipop(R1,R2,R3);
+endif;
+
+if(funcNum==3) then //exit Process
+	if([PROCESS_TABLE+[SYSTEM_STATUS_TABLE+1]*16+9]!=INT_EXEC) then //INT_EXEC=9= EXEC SYSTEM CALL
+		alias PID R0;
+		R0=0;
+		while(R0<16) do
+			if([PROCESS_TABLE+R0*16+4]==WAIT_PROCESS && [PROCESS_TABLE+R0*16+5]==[SYSTEM_STATUS_TABLE+1]) then
+				[PROCESS_TABLE+R0*16+4]=READY;
+			endif;
+			if([PROCESS_TABLE+R0*16+2]==[SYSTEM_STATUS_TABLE+1]) then
+				[PROCESS_TABLE+R0*16+2]=-1;
+			endif;
+			R0=R0+1;
+		endwhile;
+	endif;
+
+	alias PID R2;
+	
+	multipush(R1,R2);
+	R1=4; //funcNum for free page table
+	//R2=R2; //for PID
+	call MOD_1; // PROCESS_MANAGER
+	multipop(R1,R2);
+	
+	multipush(R1,R2);
+	R1=2; //funcNum for free user area page
+	//R2=R2; //for PID
+	call MOD_1; // PROCESS_MANAGER
+	multipop(R1,R2);
+	
+	[PROCESS_TABLE+PID*16+4]=TERMINATED;
+	
+	//breakpoint;
+endif;
+
+if(funcNum==4) then //free Page Table
+	[PTBR+0]=-1;
+	[PTBR+1]="0000";
+	[PTBR+2]=-1;
+	[PTBR+3]="0000";
+	alias num R4;
+	num=4;
+	while(num<20) do
+		if([PTBR+num]!=-1) then
+			multipush(R1,R2,R4);
+			R1=RELEASE_PAGE; //=2
+			R2=[PTBR+num];
+			call MOD_2; //MEMORY_MANAGER
+			multipop(R1,R2,R4);
+			[PTBR+num]=-1;
+			[PTBR+num+1]="0000";
+		endif;
+		num=num+2;
+	endwhile;
+	
+	//Loop through the Disk Map Table entries of the process  
+    //if (the entry is valid and is stack or heap)
+	//call release_block() function in the Memory Manager Module.
+    //set the entry to -1.
+	
+	num=0;
+	while(num<10) do
+		if(num==2 || num==3 || num==8 || num==9) then
+			if([DISK_MAP_TABLE+R2*10+num]!=-1) then
+				multipush(R1,R2,R4);
+				R1=RELEASE_BLOCK; //=4
+				//R2=[SYSTEM_STATUS_TABLE+1]; //for PID
+				R3=[DISK_MAP_TABLE+R2*10+num];
+				call MOD_2;
+				multipop(R1,R2,R4);
+			endif;
+		endif;
+		[DISK_MAP_TABLE+R2*10+num]=-1;
+		num=num+1;
+	endwhile;
+	
+	
+endif;
+
+return;
+
+
+
+
+//ALGORITHMS
+
+//EXIT
+
+//if (the current process is not in the exec system call)	// check MODE_FLAG
+//{
+//	loop though the process table entries
+//{
+//		/* Wake up all processes waiting for the current process */
+//		if( process is waitng for the current process ) 		/* indicated by the STATE = (WAIT_PROCESS, PID ) */
+//		Set STATE of the process to (READY, - )
+//	/* Set the children of the process as Orphan */
+//	if( process has PPID as that of the current process)
+//		Set PPID to -1.
+//    }
+//}
+//Free the Page Table entry corresponding to the process by invoking the Free_Page_Table() function; 
+//Free the User Area Page corresponding to the process by calling the Free_User_Area_Page() function;  
+///* After the User Area Page has been deallocated, the process is executing without a kernel stack. Hence the process should immmediately be scehduled out */
+//Set the state of process as (TERMINATED , - )
+//return;
+///* Note that the return statement is executing using a deallocated stack page. See note after free_user_area_page() */ 
