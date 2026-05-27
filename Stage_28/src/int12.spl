@@ -1,0 +1,72 @@
+// Logout User
+
+breakpoint;
+alias userSP R1;
+userSP = SP;
+
+// Changing the SP from user stack to kernel stack
+[PROCESS_TABLE + [SYSTEM_STATUS_TABLE+(5*CORE)+1] * 16 + 13] = SP;
+SP = [(PROCESS_TABLE+[SYSTEM_STATUS_TABLE+(5*CORE)+1]*16)+11]*512 - 1;
+
+// Setting logout status to 1
+multipush(R1);
+[SYSTEM_STATUS_TABLE+7] = 1;
+call SCHEDULER;
+multipop(R1);
+
+multipush(R1);
+R1 = ACQUIRE_KERN_LOCK;
+call ACCESS_CONTROL;
+multipop(R1);
+
+[PROCESS_TABLE + [SYSTEM_STATUS_TABLE+(5*CORE)+1]*16 + 9] = 28;
+
+alias currentPid R2;
+currentPid = [SYSTEM_STATUS_TABLE+(5*CORE)+1];
+
+alias returnVal R11;
+
+if(currentPid != 2) then
+	returnVal = -1;
+	goto returnLabel;	
+endif;
+
+breakpoint;
+
+multipush(R1,R2);
+R1 = 5;
+R2 = currentPid;
+call PROCESS_MANAGER;
+multipop(R1,R2);
+
+breakpoint;
+[SYSTEM_STATUS_TABLE+7] = 0;
+
+[PROCESS_TABLE+(16*currentPid)+4] = TERMINATED;
+[[PTBR+16]*512] = [[PTBR+8]*512 + 1];
+[PROCESS_TABLE+(16*currentPid)+13] = 4096;
+
+// Wake up the login process
+[PROCESS_TABLE+(16*1)+4] = READY;
+[SYSTEM_STATUS_TABLE] = 0;
+
+breakpoint;
+
+R1 = RELEASE_LOCK;
+R2 = KERN_LOCK;
+call ACCESS_CONTROL;
+
+call SCHEDULER;
+
+
+returnLabel:
+	[([PTBR+2*((userSP-1)/512)]*512)+((userSP-1)%512)] = returnVal;
+	[PROCESS_TABLE+(currentPid*16)+9] = 0;
+	
+	R1 = RELEASE_LOCK;
+	R2 = KERN_LOCK;
+	call ACCESS_CONTROL;
+	
+	SP = [PROCESS_TABLE + [SYSTEM_STATUS_TABLE+(5*CORE)+1] * 16 + 13];
+	
+	ireturn;

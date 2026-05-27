@@ -1,0 +1,201 @@
+// Changing the SP from user stack to kernel stack
+[PROCESS_TABLE + [SYSTEM_STATUS_TABLE+(5*CORE)+1] * 16 + 13] = SP;
+SP = [(PROCESS_TABLE+[SYSTEM_STATUS_TABLE+(5*CORE)+1]*16)+11]*512 - 1;
+
+R1 = ACQUIRE_KERN_LOCK;
+call ACCESS_CONTROL;
+
+alias userSP R1;
+userSP = [PROCESS_TABLE + [SYSTEM_STATUS_TABLE+(5*CORE)+1] * 16 + 13];
+
+alias syscall R2;
+syscall = [([PTBR+2*((userSP-5)/512)]*512)+((userSP-5)%512)];
+[PROCESS_TABLE + [SYSTEM_STATUS_TABLE+(5*CORE)+1]*16 + 9] = syscall;
+
+alias currentPid R3;
+currentPid = [SYSTEM_STATUS_TABLE+(5*CORE)+1];
+
+alias returnVal R11;
+
+
+// OPEN FILE
+if(syscall == 2) then
+	alias fileName R4;
+	fileName = [([PTBR+2*((userSP-4)/512)]*512)+((userSP-4)%512)];
+
+	alias resourceTable R5;
+	alias freeIndex R6;
+	resourceTable = ([PROCESS_TABLE+(16*currentPid)+11]*512) + RESOURCE_TABLE_OFFSET;
+	freeIndex = 0;
+	
+	while(freeIndex < 8) do
+		if([resourceTable+(2*freeIndex)] == -1) then
+			break;
+		endif;
+		freeIndex = freeIndex + 1;
+	endwhile;
+	
+	// No Free Entry is Found in Resource Table
+	if(freeIndex == 8) then
+		returnVal = -3;
+		goto returnLabel;
+	endif;
+	
+	// Calling Open - File Mangaer Module
+	multipush(R1,R2,R3,R4,R5,R6);
+	R1 = 3;
+	R2 = [SYSTEM_STATUS_TABLE+(5*CORE)+1];
+	R3 = fileName;
+	call FILE_MANAGER;
+	multipop(R1,R2,R3,R4,R5,R6);
+
+	// If some error occured by open() function of file manager module
+	if(R0 < 0) then
+		returnVal = R0;
+		goto returnLabel;
+	endif;
+	
+	// Set the per-process resource table entries
+	[resourceTable+(2*freeIndex)] = FILE;
+	[resourceTable+(2*freeIndex)+1] = R0;
+	
+	returnVal = freeIndex;
+	goto returnLabel;
+	
+endif;
+
+
+// CLOSE FILE
+if(syscall == 3) then
+	alias fileDes R4;
+	alias resourceTable R5;
+	resourceTable = ([PROCESS_TABLE+(16*currentPid)+11]*512) + RESOURCE_TABLE_OFFSET;
+	fileDes = [([PTBR+2*((userSP-4)/512)]*512)+((userSP-4)%512)];
+	
+	// If fileDescriptor is invalid; return -1
+	if((fileDes<0)||(fileDes>7)) then
+		returnVal = -1;
+		goto returnLabel;
+	endif;
+	
+	// Invalid per-process resource table entry
+	if(([resourceTable+(2*fileDes)] == -1)||([resourceTable+(2*fileDes)] != FILE)) then
+		returnVal = -1;
+		goto returnLabel;
+	endif;
+	
+	// Calling Close - File Manager Module
+	multipush(R1,R2,R3,R4,R5);
+	R1 = 4;										// Function Number
+	R2 = [SYSTEM_STATUS_TABLE+(5*CORE)+1];
+	R3 = [resourceTable+(2*fileDes)+1];			// Open file table index
+	call FILE_MANAGER;
+	multipop(R1,R2,R3,R4,R5);
+	
+	// Invalidate per-process table entries
+	[resourceTable+(2*fileDes)] = -1;
+	[resourceTable+(2*fileDes)+1] = -1;
+	
+	returnVal = 0;
+	goto returnLabel;
+	
+endif;
+
+// SEEK FILE
+if(syscall == 6) then
+	alias fileDes R4;
+	alias offset R5;
+	alias resourceTable R6;
+	resourceTable = ([PROCESS_TABLE+(16*currentPid)+11]*512) + RESOURCE_TABLE_OFFSET;
+	fileDes = [([PTBR+2*((userSP-4)/512)]*512)+((userSP-4)%512)];
+	offset = [([PTBR+2*((userSP-3)/512)]*512)+((userSP-3)%512)];
+	
+	// If fileDescriptor is invalid; return -1
+	if((fileDes<0)||(fileDes>7)) then
+		returnVal = -1;
+		goto returnLabel;
+	endif;
+	
+	// Invalid per-process resource table entry
+	if(([resourceTable+(2*fileDes)] == -1)||([resourceTable+(2*fileDes)] != FILE)) then
+		returnVal = -1;
+		goto returnLabel;
+	endif;
+
+	alias openFileIndex R7;
+	alias inodeIndex R8;
+	openFileIndex = [resourceTable+(2*fileDes)+1];
+	inodeIndex = [OPEN_FILE_TABLE+(4*openFileIndex)];
+	
+	multipush(R1,R2,R3,R4,R5,R6,R7,R8);
+	R1 = 4;
+	R2 = [SYSTEM_STATUS_TABLE+(5*CORE)+1];
+	R3 = inodeIndex;
+	call RESOURCE_MANAGER;
+	multipop(R1,R2,R3,R4,R5,R6,R7,R8);
+	
+	// Locking Fails
+	if(R0 == -1) then
+		returnVal = -1;
+		goto returnLabel;
+	endif;
+	
+	alias lseek R9;
+	alias fileSize R10;
+	lseek = OPEN_FILE_TABLE+(4*openFileIndex)+2;
+	
+	if(inodeIndex == INODE_ROOT) then
+		fileSize = 480;
+	else
+		fileSize = [INODE_TABLE+(inodeIndex*16)+2];
+	endif;
+	
+	if([lseek]+offset < 0) then
+		// Release Inode
+		multipush(R1,R2,R3,R4,R5,R6,R7,R8,R9,R10);
+		R1 = 5;
+		R2 = [SYSTEM_STATUS_TABLE+(5*CORE)+1];
+		R3 = inodeIndex;
+		call RESOURCE_MANAGER;
+		multipop(R1,R2,R3,R4,R5,R6,R7,R8,R9,R10);	
+	
+		returnVal = -2;
+		goto returnLabel;
+	
+	endif;
+	
+	if(offset == 0) then
+		[lseek] = 0;
+	endif;
+	if([lseek]+offset > fileSize) then
+		[lseek] = fileSize;
+	else
+		[lseek] = [lseek] + offset;
+	endif;
+	
+	// Release Inode
+	multipush(R1,R2,R3,R4,R5,R6,R7,R8,R9,R10);
+	R1 = 5;
+	R2 = [SYSTEM_STATUS_TABLE+(5*CORE)+1];
+	R3 = inodeIndex;
+	call RESOURCE_MANAGER;
+	multipop(R1,R2,R3,R4,R5,R6,R7,R8,R9,R10);	
+	
+	// breakpoint;
+	returnVal = 0;
+	goto returnLabel;
+	
+	
+endif;
+
+returnLabel:
+	[([PTBR+2*((userSP-1)/512)]*512)+((userSP-1)%512)] = returnVal;
+	[PROCESS_TABLE+(currentPid*16)+9] = 0;
+	
+	R1 = RELEASE_LOCK;
+  	R2 = KERN_LOCK;
+  	call ACCESS_CONTROL;
+  	
+  	SP = [PROCESS_TABLE + [SYSTEM_STATUS_TABLE+(5*CORE)+1] * 16 + 13];
+  	
+	ireturn;

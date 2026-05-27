@@ -1,0 +1,114 @@
+// Changing the SP from user stack to kernel stack
+[PROCESS_TABLE + [SYSTEM_STATUS_TABLE+(5*CORE)+1] * 16 + 13] = SP;
+SP = [(PROCESS_TABLE+[SYSTEM_STATUS_TABLE+(5*CORE)+1]*16)+11]*512 - 1;
+
+R1 = ACQUIRE_KERN_LOCK;
+call ACCESS_CONTROL;
+
+alias returnVal R11;
+alias userSP R1;
+userSP = [PROCESS_TABLE + [SYSTEM_STATUS_TABLE+(5*CORE)+1] * 16 + 13];
+
+alias syscall R2;
+syscall = [([PTBR+2*((userSP-5)/512)]*512)+((userSP-5)%512)];
+[PROCESS_TABLE + [SYSTEM_STATUS_TABLE+(5*CORE)+1]*16 + 9] = syscall;
+
+alias currentPid R3;
+currentPid = [SYSTEM_STATUS_TABLE+(5*CORE)+1];
+
+// Semget System Call
+if(syscall == 17) then
+
+	alias startPpt R4;
+	alias freeEntry R5;
+	startPpt = ([PROCESS_TABLE+(currentPid*16)+11])*512 + RESOURCE_TABLE_OFFSET;
+	freeEntry = 0;
+	while(freeEntry <= 7) do
+		if([startPpt+(2*freeEntry)] == -1) then
+			break;
+		endif;
+		freeEntry = freeEntry + 1;
+	endwhile;
+	
+	// If no free entry in pre process table then return -1;
+	if(freeEntry == 8) then
+		returnVal = -1;
+		goto returnLabel;
+	endif;
+
+	// Resource is semaphore
+	[startPpt+(2*freeEntry)] = 1;
+	
+	alias freeSemTableEntry R6;
+	// Acquire a semaphore;
+	multipush(R1,R2,R3,R4,R5);
+	R1 = 6;
+	R2 = [SYSTEM_STATUS_TABLE+(5*CORE)+1];
+	call RESOURCE_MANAGER;
+	freeSemTableEntry = R0;
+	multipop(R1,R2,R3,R4,R5);	
+	
+	
+	// If no free entry in semaphore table then return -2;
+	if(freeSemTableEntry == -1) then
+		returnVal = -2;
+		goto returnLabel;
+	endif;
+	
+	// Attach the semaphore to the process
+	[startPpt+(2*freeEntry)+1] = freeSemTableEntry;
+	
+	returnVal = freeEntry;
+	goto returnLabel;
+	
+endif;
+
+
+// Semrelease System Call
+if(syscall == 18) then
+
+	alias semId R4;
+	alias resTable R5;
+	semId = [([PTBR+2*((userSP-4)/512)]*512)+((userSP-4)%512)];
+	resTable = [PROCESS_TABLE+(16*currentPid)+11]*512 + RESOURCE_TABLE_OFFSET;
+	
+	// Validate if semId is correct
+	if((semId>7)||(semId<0)) then
+		if([resTable+(2*semId)] != SEMAPHORE) then
+			returnVal = -1;
+			goto returnLabel;
+		endif;
+	endif;
+	
+	
+	alias returnStatus R6;
+	
+	// Release Semaphore
+	multipush(R1,R2,R3,R4,R5);
+	R1 = 7;
+	R2 = [resTable+(2*semId)+1];
+	R3 = currentPid;
+	call RESOURCE_MANAGER;
+	returnStatus = R0;
+	multipop(R1,R2,R3,R4,R5);
+	
+	// Invalidate Ppt entry
+	[resTable+(2*semId)] = -1;
+	
+	// Return
+	returnVal = 0;
+	goto returnLabel;
+		
+endif;
+
+returnLabel:
+	[([PTBR+2*((userSP-1)/512)]*512)+((userSP-1)%512)] = returnVal;
+	[PROCESS_TABLE+(currentPid*16)+9] = 0;
+	
+	R1 = RELEASE_LOCK;
+  	R2 = KERN_LOCK;
+  	call ACCESS_CONTROL;
+  	
+  	SP = [PROCESS_TABLE + [SYSTEM_STATUS_TABLE+(5*CORE)+1] * 16 + 13];
+  	
+	ireturn;

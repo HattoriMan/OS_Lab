@@ -1,0 +1,40 @@
+alias functionNum R1;
+
+// Acquire Kernel Lock
+if(functionNum == 1) then
+	if(CORE == SECONDARY_CORE) then
+		if([SYSTEM_STATUS_TABLE + 5] != 0 || [SYSTEM_STATUS_TABLE + 7] != 0) then
+       		[PROCESS_TABLE + [SYSTEM_STATUS_TABLE + 6]*16 + 4] = READY;
+       		call SCHEDULER;
+    	endif;
+	endif;
+	
+	while(tsl(KERN_LOCK) == 1) do
+		continue;
+	endwhile;	
+	return;
+endif;	
+
+// Acquire Scheduler Lock
+if(functionNum == 2) then
+	while(tsl(SCHED_LOCK) == 1) do
+		continue;
+	endwhile;
+	return;
+endif;
+
+// Acquire Glock
+if(functionNum == 3) then
+	while(tsl(GLOCK) == 1) do
+		continue;
+	endwhile;
+	return;
+endif;
+
+// Release Lock
+if(functionNum == 4) then
+  alias lockVarAddr R2;
+  [lockVarAddr] = 0;
+  return;
+
+endif;

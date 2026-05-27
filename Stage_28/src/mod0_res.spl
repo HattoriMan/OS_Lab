@@ -1,0 +1,264 @@
+alias functionNum R1;
+
+// Acquire Buffer
+if(functionNum == 1) then
+	alias currentPid R2;
+	alias bufferNum R3;
+	
+	while([BUFFER_TABLE+(4*bufferNum)+2] != -1)do
+		[PROCESS_TABLE+(16*currentPid)+4] = WAIT_BUFFER;
+		[PROCESS_TABLE+(16*currentPid)+5] = bufferNum;
+		
+		multipush(R1,R2,R3);
+		// Releasing Kernel Lock
+		R1 = RELEASE_LOCK;
+		R2 = KERN_LOCK;
+		call ACCESS_CONTROL;
+		
+		call SCHEDULER;
+		
+		// Acquiring Kernel Lock
+		R1 = ACQUIRE_KERN_LOCK;
+		call ACCESS_CONTROL;
+		multipop(R1,R2,R3);
+
+	endwhile;
+	
+	[BUFFER_TABLE+(4*bufferNum)+2] = currentPid;
+	return;
+endif;
+
+
+// Release Buffer
+if(functionNum == 2) then
+	alias currentPid R2;
+	alias bufferNum R3;
+	
+	if([BUFFER_TABLE+(4*bufferNum)+2] != currentPid) then
+		R0 = -1;
+		return;
+	endif;
+	
+	[BUFFER_TABLE+(4*bufferNum)+2] = -1;
+	
+	alias pid R4;
+	pid = 0;
+	while(pid<16) do
+		alias proTable R5;
+		proTable = PROCESS_TABLE+(16*pid);
+		if(([proTable+4]==WAIT_BUFFER)&&([proTable+5]==bufferNum)) then
+			[proTable+4] = READY;
+		endif;
+		pid = pid + 1;
+	endwhile;
+
+	R0 = 0;
+	return;
+endif;
+
+
+// Acquire Disk
+if(functionNum == 3) then
+	alias currentPID R2;
+	
+	while([DISK_STATUS_TABLE] == 1) do
+		[PROCESS_TABLE + (currentPID * 16) + 4] = WAIT_DISK;
+		
+		multipush(R1,R2);
+		// Releasing Kernel Lock
+		R1 = RELEASE_LOCK;
+		R2 = KERN_LOCK;
+		call ACCESS_CONTROL;
+		
+		call SCHEDULER;
+		
+		// Acquiring Kernel Lock
+		R1 = ACQUIRE_KERN_LOCK;
+		call ACCESS_CONTROL;
+		multipop(R1,R2);
+	endwhile;
+	
+	// Lock the disk for the current process.
+	[DISK_STATUS_TABLE] = 1;
+	[DISK_STATUS_TABLE+4] = currentPID;
+	return;
+	
+endif;
+
+
+// Acquire Inode
+if(functionNum == 4) then
+	alias currentPid R2;
+	alias inodeIndex R3;
+	
+	// breakpoint;
+	while([FILE_STATUS_TABLE+(4*inodeIndex)] != -1) do
+		[PROCESS_TABLE+(16*currentPid)+4] = WAIT_FILE;
+		[PROCESS_TABLE+(16*currentPid)+5] = inodeIndex;
+		
+		multipush(R1,R2,R3);
+		// Releasing Kernel Lock
+		R1 = RELEASE_LOCK;
+		R2 = KERN_LOCK;
+		call ACCESS_CONTROL;
+		
+		call SCHEDULER;
+		
+		// Acquiring Kernel Lock
+		R1 = ACQUIRE_KERN_LOCK;
+		call ACCESS_CONTROL;
+		multipop(R1,R2,R3);
+	endwhile;
+	
+	// File was deleted by the time the inode was acquired
+	if([INODE_TABLE+(16*inodeIndex)+1] == -1) then
+		R0 = -1;
+		return;
+	endif;
+	
+	// Acquiring Inode
+	[FILE_STATUS_TABLE+(4*inodeIndex)] = currentPid;
+	R0 = 0;
+	return;
+	
+endif;
+
+
+// Release Inode
+if(functionNum == 5) then
+	alias currentPid R2;
+	alias inodeIndex R3;
+	
+	// If the current process did not lock this file; return -1
+	if([FILE_STATUS_TABLE+(4*inodeIndex)] != currentPid) then
+		R0 = -1;
+		return;
+	endif;
+	
+	[FILE_STATUS_TABLE+(4*inodeIndex)] = -1;
+	
+	alias count R4;
+	count = 0;
+	while(count < 16) do
+		alias proTab R5;
+		proTab = PROCESS_TABLE+(16*count);
+		if(([proTab+4]==WAIT_FILE)&&([proTab+5]==inodeIndex)) then
+			[proTab+4] = READY;
+		endif;
+		count = count + 1;
+	endwhile;
+	
+	R0 = 0;
+	return;
+	
+endif;
+
+
+// Acquire Semaphore
+if(functionNum == 6) then
+	alias currentPid R2;
+	alias count R3;
+	count = 0;
+	while(count < 32) do
+		if([SEMAPHORE_TABLE+(4*count)+1]==0) then
+			[SEMAPHORE_TABLE+(4*count)] = -1;
+			[SEMAPHORE_TABLE+(4*count)+1] = 1;
+			R0 = count;
+			return;
+		endif;
+		count = count + 1;
+	endwhile;
+	
+	// Return failure
+	R0 = -1;
+	return;
+endif;
+
+
+// Release Semaphore
+if(functionNum == 7) then
+	alias semTableEntry R2;
+	alias currPid R3;
+	
+	if([SEMAPHORE_TABLE+(4*semTableEntry)] == currPid) then
+		[SEMAPHORE_TABLE+(4*semTableEntry)] = -1;
+		
+		alias count R4;
+		count = 0;
+		while(count < 16) do
+			alias proTable R5;
+			proTable = PROCESS_TABLE+(16*count);
+			if(([proTable+4] == WAIT_SEMAPHORE)&&([proTable+5] == semTableEntry)) then
+				[proTable+4] = READY;
+			endif;
+			count = count + 1;
+		endwhile;	
+	endif;
+	
+	[SEMAPHORE_TABLE+(4*semTableEntry)+1]=[SEMAPHORE_TABLE+(4*semTableEntry)+1]-1;
+	return;
+	
+endif;
+
+// Acquire Terminal
+if(functionNum == 8) then
+	alias currentPID R2;
+
+	// Setting the state of current process to wait_terminal
+	while([TERMINAL_STATUS_TABLE] == 1) do
+		[PROCESS_TABLE + (currentPID * 16) + 4] = WAIT_TERMINAL;
+		
+		multipush(R1,R2);
+		// Releasing Kernel Lock
+		R1 = RELEASE_LOCK;
+		R2 = KERN_LOCK;
+		call ACCESS_CONTROL;
+		
+		call SCHEDULER;
+		
+		// Acquiring Kernel Lock
+		R1 = ACQUIRE_KERN_LOCK;
+		call ACCESS_CONTROL;
+		multipop(R1,R2); 
+	endwhile;
+		
+	[TERMINAL_STATUS_TABLE] = 1;
+	[TERMINAL_STATUS_TABLE+1] = currentPID;
+	// breakpoint;
+	return;
+endif;
+		
+// Release Terminal
+if(functionNum == 9) then
+	alias currentPID R2;
+
+	if(currentPID != [TERMINAL_STATUS_TABLE+1]) then
+		alias retVal R0;
+		retVal = -1;
+		return;
+	else
+		[TERMINAL_STATUS_TABLE] = 0;
+		alias iter R3;
+		iter = 0;
+		while(iter < 16) do
+			alias pidval R4;
+			pidval = [PROCESS_TABLE + (16 * iter) + 1];
+			if((pidval > 0) && (pidval < 16)) then
+				if([PROCESS_TABLE+(16*iter)+4] == WAIT_TERMINAL) then
+					[PROCESS_TABLE + (16 * iter) + 4] = READY;
+				endif;
+			endif;
+			iter = iter + 1;
+		endwhile;
+		
+		alias retVal R0;
+		retVal = 0;
+		// breakpoint;
+		return;
+	endif;
+
+else 
+	alias retVal R0;
+	retVal = -1;
+	return;
+endif;

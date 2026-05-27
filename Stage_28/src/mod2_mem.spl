@@ -1,0 +1,169 @@
+alias functionNum R1;
+
+// Get free page
+if(functionNum == 1) then
+	
+	// breakpoint;
+	[SYSTEM_STATUS_TABLE+3] = [SYSTEM_STATUS_TABLE+3] + 1;
+	
+	while([SYSTEM_STATUS_TABLE+2] == 0) do
+		[PROCESS_TABLE + 16*[SYSTEM_STATUS_TABLE+(5*CORE)+1] + 4] = WAIT_MEM;
+		
+		// Call context switch module
+		multipush(R1,R2);
+		// Releasing Kernel Lock
+		R1 = RELEASE_LOCK;
+		R2 = KERN_LOCK;
+		call ACCESS_CONTROL;
+		call SCHEDULER;
+		// Acquiring Kernel Lock
+		R1 = ACQUIRE_KERN_LOCK;
+		call ACCESS_CONTROL;
+		multipop(R1,R2);
+		
+	endwhile;
+	
+	[SYSTEM_STATUS_TABLE+3] = [SYSTEM_STATUS_TABLE+3] - 1;
+	[SYSTEM_STATUS_TABLE+2] = [SYSTEM_STATUS_TABLE+2] - 1;
+	
+	alias freePage R2;
+	freePage = 76;
+	while(freePage <= 127) do
+		if([MEMORY_FREE_LIST + freePage] == 0) then
+			break;
+		endif;
+		freePage = freePage + 1;
+	endwhile;
+	[MEMORY_FREE_LIST + freePage] = 1;
+	
+	R0 = freePage;
+	
+	// breakpoint;
+	return;
+endif;
+
+// Release Page
+if(functionNum == 2) then
+
+	// breakpoint;
+	alias pageNum R2;
+	[MEMORY_FREE_LIST + pageNum] = [MEMORY_FREE_LIST + pageNum] - 1;
+	if([MEMORY_FREE_LIST + pageNum] == 0) then
+		[SYSTEM_STATUS_TABLE+2] = [SYSTEM_STATUS_TABLE+2] + 1;
+	endif;
+	
+	// NOTE: CHECKOUT THE FUNCTIONALITY OF THIS LOOP!!!!
+	alias count R3;
+	count = 1;
+	while(count < 16) do
+		if(([PROCESS_TABLE+(16*count)+4]==WAIT_MEM)&&([PROCESS_TABLE+(16*count)+1]>0)&&([PROCESS_TABLE+(16*count)+1]<16)) then
+			[PROCESS_TABLE+(16*count)+4]=READY;
+		endif;
+		count = count + 1;
+	endwhile;
+	// breakpoint;
+	return;
+endif;
+
+
+// Get Free Block
+if(functionNum == 3) then
+	alias starting R2;
+	alias end R3;
+	starting = DISK_FREE_AREA;
+	end = DISK_SWAP_AREA;
+
+	while(starting < end) do
+		if([DISK_FREE_LIST+starting] == 0) then
+			[DISK_FREE_LIST+starting] = 1;
+			break;
+		endif;
+		starting = starting + 1;
+	endwhile;
+	
+	if(starting == end) then
+		R0 = -1;
+		return;
+	endif;
+	
+	R0 = starting;
+	return;
+
+endif;
+
+
+// Release Block
+if(functionNum == 4) then
+	alias blockNum R2;
+	alias currentPID R3;
+	
+	[DISK_FREE_LIST+blockNum] = [DISK_FREE_LIST+blockNum] - 1;
+	return;
+	
+endif;
+
+// Get Code Page
+if(functionNum == 5) then
+	alias blockNumber R2;
+	// breakpoint;
+	
+	// Checking if that block is already present in memory.
+	alias count R3;
+	alias i R4;
+	count = 0;
+	while(count < 16) do
+		i = 4;
+		while(i < 8) do
+			if(([DISK_MAP_TABLE+(10*count)+i]==blockNumber)&&([PAGE_TABLE_BASE+(20*count)+(2*i)]!=-1)) then
+				R0 = [PAGE_TABLE_BASE+(20*count)+(2*i)];
+				[MEMORY_FREE_LIST+R0] = [MEMORY_FREE_LIST+R0] + 1;
+				return;
+			endif;
+			i = i + 1;
+		endwhile;
+		count = count + 1;
+	endwhile;
+	
+	
+	// If the block is not present in memory
+	alias pageNumber R3;
+	
+	multipush(R1,R2);
+	R1 = 1;
+	call MEMORY_MANAGER;
+	pageNumber = R0;
+	multipop(R1,R2);
+	
+	
+	multipush(R1,R2,R3);
+	R1 = 2;
+	R4 = blockNumber;
+	R2 = [SYSTEM_STATUS_TABLE+(5*CORE)+1];
+	R3 = pageNumber;
+	call DEVICE_MANAGER;
+	multipop(R1,R2,R3);
+	
+	R0 = pageNumber;
+	
+	// breakpoint;
+	return;
+	
+endif;
+
+// Get Swap Block
+if(functionNum == 6) then
+	alias count R2;
+	count = DISK_SWAP_AREA;
+	
+	while(count < DISK_SIZE) do
+		if([DISK_FREE_LIST+count] == 0) then
+			[DISK_FREE_LIST+count] = 1;
+			R0 = count;
+			return;
+		endif;
+		count = count + 1;
+	endwhile;
+	
+	R0 = -1;
+	return;
+endif;

@@ -1,0 +1,223 @@
+alias functionNum R1;
+alias currentPID R2;
+
+// Get PCB entry
+if(functionNum == 1) then
+	alias base R1;					// Of Process Table
+	alias offset R2;				// Pid value of the process
+	base = PROCESS_TABLE;
+	offset = 2;
+	while(offset < 16) do
+		if([base+(16*offset)+4] == TERMINATED) then
+			[base+(16*offset)+1] = offset;							// Set Pid value
+			[base+(16*offset)+4] = ALLOCATED;						// State
+			[base+(16*offset)+14] = PAGE_TABLE_BASE+(offset*20);	// PTBR
+			[base+(16*offset)+15] = 10;								// PTLR
+			
+			R0 = offset;
+			return;
+			
+		endif;
+		offset = offset + 1;
+	endwhile;
+	
+	R0 = -1;
+	return;
+endif;
+
+// Free User Area Page
+if(functionNum == 2) then
+	// breakpoint;
+
+	alias userAreaPageNumber R3;
+	userAreaPageNumber = [PROCESS_TABLE+(currentPID*16)+11];
+	
+	// We need to release this page
+	multipush(R1,R2,R3);
+	R1 = 2;					// Function Number
+	R2 = userAreaPageNumber;		// Page Number
+	call MEMORY_MANAGER;
+	multipop(R1,R2,R3);
+	
+	// For each entry in per process table release semaphores
+	alias count R4;
+	alias resTable R5;
+	count = 0;
+	resTable = userAreaPageNumber*512 + RESOURCE_TABLE_OFFSET;
+	while(count < 8) do
+		if([resTable+(2*count)] == SEMAPHORE) then
+			multipush(R1,R2,R3,R4,R5);
+			R1 = 7;
+			R3 = currentPID;
+			R2 = [resTable+(2*count)+1];
+			call RESOURCE_MANAGER;
+			multipop(R1,R2,R3,R4,R5);
+		endif;
+		
+		if([resTable+(2*count)] == FILE) then
+			// Calling Close - File Manager Module
+			multipush(R1,R2,R3,R4,R5);
+			R1 = 4;									// Function Number
+			R2 = currentPID;
+			R3 = [resTable+(2*count)+1];			// Open file table index
+			call FILE_MANAGER;
+			multipop(R1,R2,R3,R4,R5);
+		endif;
+		
+		[resTable+(2*count)] = -1;
+		count = count + 1;
+	endwhile;
+	return;
+	
+endif;
+
+
+// Exit process
+if(functionNum == 3) then
+	
+	// Invoking Free Page table function
+	multipush(R1,R2);
+	R1 = 4;					// Function Number
+	R2 = currentPID;			// PID of current Process
+	call PROCESS_MANAGER;
+	multipop(R1,R2);
+	
+	// Invoking Free user area page
+	multipush(R1,R2);
+	R1 = 2;					// Function Number
+	R2 = currentPID;			// PID of current Process
+	call PROCESS_MANAGER;
+	multipop(R1,R2);
+	
+	// Set the state of the process at Terminated
+	[PROCESS_TABLE+(currentPID*16)+4] = TERMINATED;
+	
+	// If the call to this function is not from exec system call
+	if([PROCESS_TABLE+(currentPID*16)+9] != 9) then
+		alias count R3;
+		count = 1;
+		while(count < 16) do 
+			if(([PROCESS_TABLE+(count*16)+4]==WAIT_PROCESS)&&(([PROCESS_TABLE+(count*16)+5]==currentPID))) then
+				[PROCESS_TABLE+(count*16)+4] = READY;
+				[PROCESS_TABLE+(count*16)+5] = 0;
+			endif;
+			if([PROCESS_TABLE+(count*16)+2] == currentPID) then
+				[PROCESS_TABLE+(count*16)+2] = -1;
+			endif;
+			count = count + 1; 
+		endwhile;
+	endif;
+	
+	return;
+	
+endif;
+
+// Free Page Table
+if(functionNum == 4) then
+	
+	// Invalidate the page table entries for library page
+	[PTBR+0] = -1;
+	[PTBR+1] = "0000";
+	[PTBR+2] = -1;
+	[PTBR+3] = "0000";
+	
+	// breakpoint;
+	
+	// Invalidate page table
+	alias count R3;
+	alias pageNum R4;
+	count=2;
+	while(count < PTLR) do
+		pageNum = [[PROCESS_TABLE+(16*currentPID)+14]+(2*count)];
+		if(pageNum!=-1) then
+			multipush(R1,R2,R3,R4);
+			R1 = 2;
+			R2 = pageNum;
+			call MEMORY_MANAGER;
+			multipop(R1,R2,R3,R4);
+			
+			// Invalidate the page table entry
+			[[PROCESS_TABLE+(16*currentPID)+14]+(2*count)] = -1;
+			[[PROCESS_TABLE+(16*currentPID)+14]+(2*count)+1] = "0000";
+		endif;
+		count = count + 1;
+	endwhile;
+	
+	// NOTE: CHECKOUT THE FUNCTIONALITY OF THIS IN LATER STAGES.
+	// Free disk block occupied by stack and heap portion of the earlier process.
+	count=2;
+	while(count < 10) do
+		if((count<4)||(count>7)) then
+			if([DISK_MAP_TABLE+count+(currentPID*10)] != -1) then
+				multipush(R1,R2,R3,R4);
+				R1 = 4;
+				R3 = currentPID;
+				R2 = [DISK_MAP_TABLE+count+(currentPID*10)];
+				call MEMORY_MANAGER;
+				multipop(R1,R2,R3,R4);
+			endif;
+			[DISK_MAP_TABLE+(currentPID*10)+count] = -1;
+		endif;
+		count = count + 1;
+	endwhile;
+	// breakpoint;
+	
+	return;
+	
+endif;
+
+// Kill All
+if(functionNum == 5) then
+	alias currentPid R2;
+	alias count R3;
+	
+	//Lock all files to ensure that no processes are in the middle of a file operation
+	count = 0;
+	while(count < MAX_FILE_NUM) do
+		if([INODE_TABLE+(16*count)+1] != -1) then
+			multipush(R1,R2,R3);
+			R1 = 4;
+			R2 = currentPid;
+			R3 = count;
+			call RESOURCE_MANAGER;
+			multipop(R1,R2,R3);
+		endif;
+		count = count + 1;
+	endwhile;
+	
+	// Terminate all the process except idle and init
+	count = 2;
+	while(count < MAX_PROC_NUM) do 
+		if((count==14)||(count==15)) then
+			break;
+		endif;
+	
+		alias proTable R4;
+		proTable = PROCESS_TABLE+(16*count);
+		if(([proTable+1]!=currentPid)&&([proTable+4]!=TERMINATED)) then
+			multipush(R1,R2,R3,R4);
+			R1 = 3;
+			R2 = count;
+			call PROCESS_MANAGER;
+			multipop(R1,R2,R3,R4);
+		endif;
+		count = count + 1;
+	endwhile;
+	
+	// Release Inode Table
+	count = 0;
+	while(count < MAX_FILE_NUM) do
+		if([INODE_TABLE+(16*count)+1] != -1) then
+			multipush(R1,R2,R3);
+			R1 = 5;
+			R2 = currentPid;
+			R3 = count;
+			call RESOURCE_MANAGER;
+			multipop(R1,R2,R3);
+		endif;
+		count = count + 1;
+	endwhile;
+	
+	return;
+
+endif;

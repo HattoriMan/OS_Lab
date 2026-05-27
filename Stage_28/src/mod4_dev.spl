@@ -1,0 +1,148 @@
+alias functionNum R1;
+alias currentPID R2;
+
+// Disk Store Function
+if(functionNum == 1) then
+	alias pageNum R3;
+	alias blockNum R4;
+	
+	// Acquire the Disk
+	multipush(R1,R2,R3,R4);
+	functionNum = 3;
+	currentPID = currentPID;
+	call RESOURCE_MANAGER;
+	multipop(R1,R2,R3,R4);
+	
+	// Set the Disk Status table entries
+	[DISK_STATUS_TABLE + 1] = 1;
+	[DISK_STATUS_TABLE + 2] = pageNum;
+	[DISK_STATUS_TABLE + 3] = blockNum;
+	
+	// Executing load instruction to start data transfer
+	store(pageNum, blockNum);
+	[PROCESS_TABLE + (currentPID * 16) + 4] = WAIT_DISK;
+	// breakpoint;
+	
+	// Schedular some other process in the mean time
+	multipush(R1,R2,R3,R4);
+	// Releasing Kernel Lock
+	R1 = RELEASE_LOCK;
+	R2 = KERN_LOCK;
+	call ACCESS_CONTROL;
+	call SCHEDULER;
+	// Acquiring Kernel Lock
+	R1 = ACQUIRE_KERN_LOCK;
+	call ACCESS_CONTROL;
+	multipop(R1,R2,R3,R4);
+	
+	return;
+
+endif;
+
+// Disk Load Function
+if(functionNum == 2) then
+	alias pageNum R3;
+	alias blockNum R4;
+	
+	// Acquire the Disk
+	multipush(R1,R2,R3,R4);
+	functionNum = 3;
+	currentPID = currentPID;
+	call RESOURCE_MANAGER;
+	multipop(R1,R2,R3,R4);
+	
+	// Set the Disk Status table entries
+	[DISK_STATUS_TABLE + 1] = 0;
+	[DISK_STATUS_TABLE + 2] = pageNum;
+	[DISK_STATUS_TABLE + 3] = blockNum;
+	
+	// Executing load instruction to start data transfer
+	load(pageNum, blockNum);
+	[PROCESS_TABLE + (currentPID * 16) + 4] = WAIT_DISK;
+	// breakpoint;
+	
+	// Schedular some other process in the mean time
+	multipush(R1,R2,R3,R4);
+	// Releasing Kernel Lock
+	R1 = RELEASE_LOCK;
+	R2 = KERN_LOCK;
+	call ACCESS_CONTROL;
+	call SCHEDULER;
+	// Acquiring Kernel Lock
+	R1 = ACQUIRE_KERN_LOCK;
+	call ACCESS_CONTROL;
+	multipop(R1,R2,R3,R4);
+	
+	return;
+	
+endif;
+
+// Terminal Write Function
+if(functionNum == 3) then
+	alias word R3;
+
+	// ACQUIRE TERMINAL
+	multipush(R1,R2,R3);
+	functionNum = 8;
+	currentPID = currentPID;
+	call RESOURCE_MANAGER;
+	multipop(R1,R2,R3);
+	
+	// The terminal is aquired we can use terminal to print word
+	print word;					
+
+	// RELEASE TERMINAL
+	
+	multipush(R1,R2,R3);
+	functionNum = 9;				
+	currentPID = currentPID;		
+	call RESOURCE_MANAGER;
+	
+// Note: Return value will be in R0 register store it before restoring the registers.
+// Restoring the content of registers
+	multipop(R1,R2,R3);
+	
+	return;
+	
+endif;
+
+// Termial Read Function
+if(functionNum == 4) then
+	alias word R3;
+	
+	// ACQUIRE TERMINAL
+	multipush(R1,R2,R3);
+	functionNum = 8;
+	currentPID = currentPID;
+	call RESOURCE_MANAGER;
+	multipop(R1,R2,R3);
+	
+	// This instruction prompt the user for input, but till the user enters the text we will 
+	// schedule some other process
+	read;
+	[PROCESS_TABLE + (currentPID * 16) + 4] = WAIT_TERMINAL;
+	
+	// Pushing the registers used till now, to invoke schedular module.
+	multipush(R1,R2,R3);
+	// Releasing Kernel Lock
+	R1 = RELEASE_LOCK;
+	R2 = KERN_LOCK;
+	call ACCESS_CONTROL;
+	call SCHEDULER;
+	// Acquiring Kernel Lock
+	R1 = ACQUIRE_KERN_LOCK;
+	call ACCESS_CONTROL;
+	multipop(R1,R2,R3);
+	
+	// Storing the user input into the input buffer field of the process table.
+	alias phyAddr R4;
+	phyAddr = [PAGE_TABLE_BASE + currentPID*20 + 2*word/512]*512 + word%512;
+	[phyAddr] = [PROCESS_TABLE + 16*currentPID + 8];
+	
+	return;
+	
+	// Terminal will be released from console interrupt handler.
+
+else
+	return;
+endif;

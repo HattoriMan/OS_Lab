@@ -1,0 +1,210 @@
+alias functionNum R1;
+alias currentPid R2;
+
+// Swap Out
+if(functionNum == 1) then
+	breakpoint;
+	alias swapIndex R3;
+	alias count R4;
+	
+	swapIndex = -1;
+	count = 3;
+	
+	// Wait Process
+	while(count < 14) do
+		alias proTable R5;
+		proTable = PROCESS_TABLE+(16*count);
+		if(([proTable+6]==0)&&([proTable+4]==WAIT_PROCESS)) then
+			swapIndex = count;
+			break;
+		endif;
+		count = count + 1;
+	endwhile;
+	
+	// Wait Semaphore
+	if(swapIndex == -1) then
+		count = 3;
+		while(count < 14) do
+			alias proTable R5;
+			proTable = PROCESS_TABLE+(16*count);
+			if(([proTable+6]==0)&&([proTable+4]==WAIT_SEMAPHORE)) then
+				swapIndex = count;
+				break;
+			endif;
+			count = count + 1;
+		endwhile;
+	
+	endif;
+	
+	// Process With max tick value
+	if(swapIndex == -1) then
+		alias maxTick R5;
+		count = 3;
+		while(count < 14) do
+			alias proTable R6;
+			proTable = PROCESS_TABLE+(16*count);
+			if(([proTable+6]==0)&&([proTable+4]!=RUNNING)&&([proTable+4]!=ALLOCATED)&&(proTable!=TERMINATED)) then
+				if(swapIndex == -1) then
+					swapIndex = count;
+					maxTick = [proTable];
+				
+				else
+					if([proTable] > maxTick) then
+						swapIndex = count;
+						maxTick = [proTable];
+					endif;
+				endif;
+			endif;
+			count = count + 1;
+		endwhile;
+	endif;
+	
+	// No process to swap out
+	if(swapIndex == -1) then
+		[SYSTEM_STATUS_TABLE+5] = 0;
+	endif;
+	
+	// Reset the tick value
+	[PROCESS_TABLE+(16*swapIndex)] = 0;
+	
+	// Invalidate page table
+	alias ptbr R5;
+	ptbr = [PROCESS_TABLE+(16*swapIndex)+14];
+	count = 2;
+	
+	while(count < 10) do
+		if([ptbr+(2*count)] != -1) then
+			// Stack Or Unshared Heap
+			if(((count>=2)&&(count<=3)&&([MEMORY_FREE_LIST+[ptbr+2*count]]==1))||((count>=8)&&(count<=9))) then
+			
+				// Get Swap Block
+				multipush(R1,R2,R3,R4,R5);
+				R1 = 6;
+				call MEMORY_MANAGER;
+				multipop(R1,R2,R3,R4,R5);
+				
+				[DISK_MAP_TABLE+(10*swapIndex)+count] = R0;
+				
+				// Store 
+				multipush(R1,R2,R3,R4,R5);
+				R1 = 1;
+				R2 = currentPid;
+				R3 = [ptbr+(2*count)];
+				R4 = R0;
+				call DEVICE_MANAGER;
+				multipop(R1,R2,R3,R4,R5);
+				
+			endif;
+			
+			if(((count!=2)&&(count!=3))||((count>=2)&&(count<=3)&&([MEMORY_FREE_LIST+[ptbr+2*count]]==1))) then
+				
+				// Release Page
+				multipush(R1,R2,R3,R4,R5);
+				R1 = 2;
+				R2 = [ptbr+(2*count)];
+				call MEMORY_MANAGER;
+				multipop(R1,R2,R3,R4,R5);
+				
+				[ptbr+(2*count)] = -1;
+				[ptbr+(2*count)+1] = "0000";
+			endif;
+		endif;
+		count = count + 1;
+	endwhile;
+	 
+	 [PROCESS_TABLE+(16*swapIndex)+6] = 1;
+	 [SYSTEM_STATUS_TABLE+4] = [SYSTEM_STATUS_TABLE+4]+1;
+	 [SYSTEM_STATUS_TABLE+5] = 0;
+	 
+	 breakpoint;
+	 return;
+
+endif;
+
+
+// Swap In
+if(functionNum == 2) then
+	
+	breakpoint;
+	alias count R3;
+	alias swapIndex R4;
+	alias maxTick R5;	
+
+	swapIndex = -1;
+	count = 3;
+	
+	while(count < 15) do
+		alias proTable R6;
+		proTable = PROCESS_TABLE+(16*count);
+		if(([proTable+6]==1)&&([proTable+4]==READY)) then
+			if(swapIndex == -1) then
+				swapIndex = count;
+				maxTick = [proTable];
+			else
+				if([proTable] > maxTick) then
+					swapIndex = count;
+					maxTick = [proTable];
+				endif;
+			endif;
+		endif;
+		count = count + 1;
+	endwhile;
+		
+	if(swapIndex == -1) then
+		[SYSTEM_STATUS_TABLE+5] = 0;
+		return;
+	endif;
+		
+	[PROCESS_TABLE+(16*swapIndex)] = 0;
+		
+	alias ptbr R5;
+	ptbr = [PROCESS_TABLE+(16*swapIndex)+14];
+	count = 2;
+		
+	while(count < 10) do
+		if([DISK_MAP_TABLE+(10*swapIndex)+count] != -1) then
+			if((count>=2 && count<=3)||(count>=8 && count<=9)) then
+				
+				alias freePage R6;
+					
+				// Get Free Page
+				multipush(R1,R2,R3,R4,R5);
+				R1 = 1;
+				call MEMORY_MANAGER;
+				freePage = R0;
+				multipop(R1,R2,R3,R4,R5);
+
+				
+				// Disk Load
+				multipush(R1,R2,R3,R4,R5,R6);
+				R1 = 2;
+				R2 = currentPid;
+				R4 = [DISK_MAP_TABLE+(10*swapIndex)+count];
+				R3 = freePage;
+				call DEVICE_MANAGER;
+				multipop(R1,R2,R3,R4,R5,R6);
+					
+				// Release block
+				multipush(R1,R2,R3,R4,R5,R6);
+				R1 = 4;
+				R2 = [DISK_MAP_TABLE+(10*swapIndex)+count];
+				call MEMORY_MANAGER;
+				multipop(R1,R2,R3,R4,R5,R6);
+					
+				[ptbr+(2*count)] = freePage;
+				[ptbr+(2*count)+1] = "0110";
+				
+				[DISK_MAP_TABLE+(10*swapIndex)+count] = -1;
+				
+			endif;
+		endif;
+		count = count + 1;
+	endwhile;
+		
+	[PROCESS_TABLE + swapIndex*16 + 6] = 0;
+	[SYSTEM_STATUS_TABLE + 4] = [SYSTEM_STATUS_TABLE + 4] - 1;
+	[SYSTEM_STATUS_TABLE + 5] = 0;
+	
+	breakpoint;
+	return;
+endif;

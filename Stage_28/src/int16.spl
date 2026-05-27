@@ -1,0 +1,208 @@
+// INT16 Newusr,Remusr,Setpwd,Getuname,Getuid
+
+// Changing the SP from user stack to kernel stack
+[PROCESS_TABLE + [SYSTEM_STATUS_TABLE+(5*CORE)+1] * 16 + 13] = SP;
+SP = [(PROCESS_TABLE+[SYSTEM_STATUS_TABLE+(5*CORE)+1]*16)+11]*512 - 1;
+
+R1 = ACQUIRE_KERN_LOCK;
+call ACCESS_CONTROL;
+
+alias userSP R1;
+userSP = [PROCESS_TABLE + [SYSTEM_STATUS_TABLE+(5*CORE)+1] * 16 + 13];
+
+alias syscall R2;
+syscall = [([PTBR+2*((userSP-5)/512)]*512)+((userSP-5)%512)];
+[PROCESS_TABLE + [SYSTEM_STATUS_TABLE+(5*CORE)+1]*16 + 9] = syscall;
+
+alias currentPid R3;
+currentPid = [SYSTEM_STATUS_TABLE+(5*CORE)+1];
+
+alias returnVal R11;
+
+// Newusr(Can only be called from shell process of root user)
+if(syscall == 22) then
+	
+	if(([SYSTEM_STATUS_TABLE]!=1)||(currentPid!=2)) then
+		returnVal = -2;
+		goto returnLabel;
+	endif;
+
+	alias username R4;
+	alias password R5;
+	username = [([PTBR+2*((userSP-4)/512)]*512)+((userSP-4)%512)];
+	password = [([PTBR+2*((userSP-3)/512)]*512)+((userSP-3)%512)];
+	
+	alias userIndex R6;
+	userIndex = 1;
+	while(userIndex < MAX_USER_NUM) do
+		if([USER_TABLE+(2*userIndex)] == username) then
+			returnVal = -1;
+			goto returnLabel;
+		endif;
+		userIndex = userIndex + 1;
+	endwhile;
+	
+	userIndex = 1;
+	while(userIndex < MAX_USER_NUM) do
+		if([USER_TABLE+(2*userIndex)] == -1) then
+			break;
+		endif;
+		userIndex = userIndex + 1;
+	endwhile;
+	
+	if(userIndex == MAX_USER_NUM) then
+		returnVal = -3;
+		goto returnLabel;
+	endif;
+	
+	encrypt password;
+	
+	[USER_TABLE+(2*userIndex)] = username;
+	[USER_TABLE+(2*userIndex)+1] = password;
+	
+	returnVal = 0;
+	goto returnLabel;
+	
+endif;
+
+// Remusr(can only be removed from shell process of root user)
+if(syscall == 23) then
+	
+	if(([SYSTEM_STATUS_TABLE]!=1)||(currentPid!=2)) then
+		returnVal = -2;
+		goto returnLabel;
+	endif;
+	
+	alias username R4;
+	username = [([PTBR+2*((userSP-4)/512)]*512)+((userSP-4)%512)];
+	
+	if((username=="kernel")||(username=="root")) then
+		returnVal = -2;
+		goto returnLabel;
+	endif;
+	
+	alias userIndex R5;
+	userIndex = 1;
+	while(userIndex < MAX_USER_NUM) do
+		if([USER_TABLE+(2*userIndex)] == username) then
+			break;
+		endif;
+		userIndex = userIndex + 1;
+	endwhile;
+	
+	if(userIndex == MAX_USER_NUM) then
+		returnVal = -1;
+		goto returnLabel;
+	endif;
+	
+	alias count R6;
+	count = 0;
+	while(count < MAX_FILE_NUM) do
+		if([ROOT_FILE+(8*count)+3] == username) then
+			returnVal = -3;
+			goto returnLabel;
+		endif;
+		count = count + 1;
+	endwhile;
+	
+	[USER_TABLE+(2*userIndex)] = -1;
+	[USER_TABLE+(2*userIndex)+1] = -1;
+	
+	returnVal = 0;
+	goto returnLabel;
+endif;
+
+// Setpwd(Can be executed only from Shell Process)
+if(syscall == 24) then
+	
+	if(currentPid != 2) then
+		returnVal = -1;
+		goto returnLabel;
+	endif;
+	
+	alias username R4;
+	alias password R5;
+	username = [([PTBR+2*((userSP-4)/512)]*512)+((userSP-4)%512)];
+	password = [([PTBR+2*((userSP-3)/512)]*512)+((userSP-3)%512)];
+
+	alias userIndex R6;
+	userIndex = 1;
+	while(userIndex < MAX_USER_NUM) do
+		if([USER_TABLE+(2*userIndex)] == username) then
+			break;
+		endif;
+		userIndex = userIndex + 1;
+	endwhile;
+	
+	if(userIndex == MAX_USER_NUM) then
+		returnVal = -2;
+		goto returnLabel;
+	endif;
+
+	// Only user can set his/her passord or root user can set
+	if(userIndex != [PROCESS_TABLE+(16*currentPid)+3]) then
+		if([PROCESS_TABLE+(16*currentPid)+3] != 1) then
+			returnVal = -1;
+			goto returnLabel;
+		endif;
+	endif;
+	
+	encrypt password;
+	[USER_TABLE+(2*userIndex)+1] = password;
+	
+	returnVal = 0;
+	goto returnLabel;
+endif;
+
+// Getuid
+if(syscall == 26) then
+
+	alias username R4;
+	username = [([PTBR+2*((userSP-4)/512)]*512)+((userSP-4)%512)];
+	
+	alias userIndex R5;
+	userIndex = 0;
+	while(userIndex < MAX_USER_NUM) do
+		if([USER_TABLE+(2*userIndex)] == username) then
+			returnVal = userIndex;
+			goto returnLabel;
+		endif;
+		userIndex = userIndex + 1;
+	endwhile;
+	
+	returnVal = -1;
+	goto returnLabel;
+endif;
+
+//Getuname
+if(syscall == 25) then
+
+	alias uid R4;
+	uid = [([PTBR+2*((userSP-4)/512)]*512)+((userSP-4)%512)];
+	
+	if((uid<0)||(uid>(MAX_USER_NUM-1))) then
+		returnVal = -1;
+		goto returnLabel;
+	endif;
+	
+	if([USER_TABLE+(2*uid)] == -1) then
+		returnVal = -1;
+		goto returnLabel;
+	endif;
+	
+	returnVal = [USER_TABLE+(2*uid)];
+	goto returnLabel;
+	
+endif;
+
+returnLabel:
+	[([PTBR+2*((userSP-1)/512)]*512)+((userSP-1)%512)] = returnVal;
+	[PROCESS_TABLE+(currentPid*16)+9] = 0;
+	
+	R1 = RELEASE_LOCK;
+  	R2 = KERN_LOCK;
+  	call ACCESS_CONTROL;
+  	
+  	SP = [PROCESS_TABLE + [SYSTEM_STATUS_TABLE+(5*CORE)+1] * 16 + 13];
+  	
+	ireturn;

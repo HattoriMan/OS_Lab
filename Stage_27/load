@@ -1,0 +1,67 @@
+load --os /home/oslab/OSLab/Stage_27/compiled/os_startup.xsm
+load --library /home/oslab/myexpos/expl/library.lib
+load --idle /home/oslab/OSLab/Stage_27/compiled/idle.xsm
+load --init /home/oslab/OSLab/Stage_27/compiled/login.xsm
+load --shell /home/oslab/OSLab/Stage_27/compiled/shell.xsm
+load --module 0 /home/oslab/OSLab/Stage_27/compiled/mod0_res.xsm
+load --module 1 /home/oslab/OSLab/Stage_27/compiled/mod1_proc.xsm
+load --module 2 /home/oslab/OSLab/Stage_27/compiled/mod2_mem.xsm
+load --module 3 /home/oslab/OSLab/Stage_27/compiled/mod3_file.xsm
+load --module 4 /home/oslab/OSLab/Stage_27/compiled/mod4_dev.xsm
+load --module 5 /home/oslab/OSLab/Stage_27/compiled/mod5_scheduler.xsm
+load --module 6 /home/oslab/OSLab/Stage_27/compiled/mod6_pager.xsm
+load --module 7 /home/oslab/OSLab/Stage_27/compiled/mod7_boot.xsm
+load --exhandler /home/oslab/OSLab/Stage_27/compiled/int00_exhandler.xsm
+load --int=timer /home/oslab/OSLab/Stage_27/compiled/int01_timer.xsm
+load --int=disk /home/oslab/OSLab/Stage_27/compiled/int02_disk.xsm
+load --int=console /home/oslab/OSLab/Stage_27/compiled/int03_console.xsm
+load --int=4 /home/oslab/OSLab/Stage_27/compiled/int04.xsm
+load --int=5 /home/oslab/OSLab/Stage_27/compiled/int05.xsm
+load --int=6 /home/oslab/OSLab/Stage_27/compiled/int06_read.xsm
+load --int=7 /home/oslab/OSLab/Stage_27/compiled/int07_write.xsm
+load --int=8 /home/oslab/OSLab/Stage_27/compiled/int08_fork.xsm
+load --int=9 /home/oslab/OSLab/Stage_27/compiled/int09_exec.xsm
+load --int=10 /home/oslab/OSLab/Stage_27/compiled/int10_exit.xsm
+load --int=11 /home/oslab/OSLab/Stage_27/compiled/int11.xsm
+load --int=12 /home/oslab/OSLab/Stage_27/compiled/int12.xsm
+load --int=13 /home/oslab/OSLab/Stage_27/compiled/int13.xsm
+load --int=14 /home/oslab/OSLab/Stage_27/compiled/int14.xsm
+load --int=15 /home/oslab/OSLab/Stage_27/compiled/int15_shutdown.xsm
+load --int=16 /home/oslab/OSLab/Stage_27/compiled/int16.xsm
+load --int=17 /home/oslab/OSLab/Stage_27/compiled/int17.xsm
+rm touch.xsm
+load --exec /home/oslab/OSLab/Stage_27/compiled/touch.xsm
+rm cat.xsm
+load --exec /home/oslab/OSLab/Stage_27/compiled/cat.xsm
+rm cp.xsm
+load --exec /home/oslab/OSLab/Stage_27/compiled/cp.xsm
+rm ls.xsm
+load --exec /home/oslab/OSLab/Stage_27/compiled/ls.xsm
+rm rm.xsm
+load --exec /home/oslab/OSLab/Stage_27/compiled/rm.xsm
+rm lu.xsm
+load --exec /home/oslab/OSLab/Stage_27/compiled/lu.xsm
+rm ru.xsm
+load --exec /home/oslab/OSLab/Stage_27/compiled/ru.xsm
+rm a27_1.xsm
+load --exec /home/oslab/OSLab/Stage_27/compiled/a27_1.xsm
+rm pid.xsm
+load --exec /home/oslab/OSLab/Stage_27/compiled/pid.xsm
+rm a27_2.xsm
+load --exec /home/oslab/OSLab/Stage_27/compiled/a27_2.xsm
+rm a27_3.xsm
+load --exec /home/oslab/OSLab/Stage_27/compiled/a27_3.xsm
+rm pgm1.xsm
+load --exec /home/oslab/OSLab/Stage_27/compiled/pgm1.xsm
+rm a27_4.xsm
+load --exec /home/oslab/OSLab/Stage_27/compiled/a27_4.xsm
+rm pgm2.xsm
+load --exec /home/oslab/OSLab/Stage_27/compiled/pgm2.xsm
+rm a27_5.xsm
+load --exec /home/oslab/OSLab/Stage_27/compiled/a27_5.xsm
+rm m_merge.xsm
+load --exec /home/oslab/OSLab/Stage_27/compiled/m_merge.xsm
+rm m_sort.xsm
+load --exec /home/oslab/OSLab/Stage_27/compiled/m_sort.xsm
+rm m_store.xsm
+load --exec /home/oslab/OSLab/Stage_27/compiled/m_store.xsm

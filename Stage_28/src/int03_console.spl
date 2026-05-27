@@ -1,0 +1,51 @@
+// breakpoint;
+
+// Saving the value of userStack into process table.
+[PROCESS_TABLE + ( [SYSTEM_STATUS_TABLE+(5*CORE)+1] * 16) + 13] = SP;
+
+// Initializing the SP to the top to kernal stack
+SP = [(PROCESS_TABLE + [SYSTEM_STATUS_TABLE+(5*CORE)+1] * 16) + 11] * 512 - 1;
+
+// Backing up the user context of the currently running process
+backup;
+
+R1 = ACQUIRE_KERN_LOCK;
+call ACCESS_CONTROL;
+
+
+alias userSP R0;
+userSP = SP;
+
+alias reqPID R1;
+reqPID = [TERMINAL_STATUS_TABLE+1];
+
+// Updating the input buffer field of process table with input given by user.
+alias process_table R2;
+process_table = PROCESS_TABLE + reqPID * 16;
+[process_table + 8] = P0;
+
+
+// RELEASE TERMINAL
+multipush(R0,R1,R2);
+// Saving the argument in the registers for calling resource manger(Release Terminal)
+alias functionNum R1;
+alias PIDval R2;
+functionNum = 9;				
+PIDval = [TERMINAL_STATUS_TABLE+1];	
+call RESOURCE_MANAGER;
+multipop(R0,R1,R2);
+
+R1 = RELEASE_LOCK;
+R2 = KERN_LOCK;
+call ACCESS_CONTROL;
+
+// Restore the user context from its kernel stack.
+restore;
+
+// Restoring user stack
+SP = [PROCESS_TABLE + [SYSTEM_STATUS_TABLE+(5*CORE)+1]*16 + 13];
+
+// breakpoint;
+// Giving command back to user.
+
+ireturn;

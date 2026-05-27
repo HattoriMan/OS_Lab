@@ -1,0 +1,84 @@
+// Changing the SP from user stack to kernel stack
+[PROCESS_TABLE + [SYSTEM_STATUS_TABLE+(5*CORE)+1] * 16 + 13] = SP;
+SP = [(PROCESS_TABLE+[SYSTEM_STATUS_TABLE+(5*CORE)+1]*16)+11]*512 - 1;
+
+R1 = ACQUIRE_KERN_LOCK;
+call ACCESS_CONTROL;
+
+alias userSP R1;
+userSP = [PROCESS_TABLE + [SYSTEM_STATUS_TABLE+(5*CORE)+1] * 16 + 13];
+[PROCESS_TABLE + [SYSTEM_STATUS_TABLE+(5*CORE)+1]*16 + 9] = 27;
+
+alias currentPid R2;
+currentPid = [SYSTEM_STATUS_TABLE+(5*CORE)+1];
+
+alias userName R3;
+alias password R4;
+userName = [([PTBR+2*((userSP-4)/512)]*512)+((userSP-4)%512)];
+password = [([PTBR+2*((userSP-3)/512)]*512)+((userSP-3)%512)];
+
+alias returnVal R11;
+
+
+if(currentPid != 1) then
+	returnVal = -2;
+	goto returnLabel;
+endif;
+
+alias userIndex R5;
+userIndex = 1;
+while(userIndex < MAX_USER_NUM) do
+	if([USER_TABLE+(2*userIndex)] == userName) then
+		break;
+	endif;
+	userIndex = userIndex + 1;
+endwhile;
+
+// If no such user is found then
+if(userIndex == MAX_USER_NUM) then
+	returnVal = -1;
+	goto returnLabel;
+endif;
+
+encrypt password;
+
+if(password != [USER_TABLE+(2*userIndex)+1]) then
+	returnVal = -1;
+	goto returnLabel;
+endif;
+
+[PROCESS_TABLE+(16*2)+3] = userIndex;
+[PROCESS_TABLE+(16*2)+4] = CREATED;
+
+[PROCESS_TABLE+(16*currentPid)+4] = WAIT_PROCESS;
+[PROCESS_TABLE+(16*currentPid)+5] = 2;
+
+[SYSTEM_STATUS_TABLE] = userIndex;
+
+multipush(R1,R2,R3,R4,R5);
+// Releasing Kernel Lock
+R1 = RELEASE_LOCK;
+R2 = KERN_LOCK;
+call ACCESS_CONTROL;
+	
+call SCHEDULER;
+	
+// Acquiring Kernel Lock
+R1 = ACQUIRE_KERN_LOCK;
+call ACCESS_CONTROL;
+multipop(R1,R2,R3,R4,R5);
+
+returnVal = 0;
+goto returnLabel;
+
+returnLabel:
+	[([PTBR+2*((userSP-1)/512)]*512)+((userSP-1)%512)] = returnVal;
+	[PROCESS_TABLE+(currentPid*16)+9] = 0;
+	
+	R1 = RELEASE_LOCK;
+  	R2 = KERN_LOCK;
+  	call ACCESS_CONTROL;
+  	
+  	SP = [PROCESS_TABLE + [SYSTEM_STATUS_TABLE+(5*CORE)+1] * 16 + 13];
+  	
+	ireturn;

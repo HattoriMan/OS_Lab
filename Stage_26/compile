@@ -1,0 +1,41 @@
+#!/bin/bash
+SPL_DIR="/home/oslab/myexpos/spl"
+EXPL_DIR="/home/oslab/myexpos/expl"
+STAGE_DIR="/home/oslab/OSLab/Stage_26"
+
+mkdir -p "$STAGE_DIR/compiled"
+
+# Compile SPL files
+if [ -d "$SPL_DIR" ]; then
+    cd "$SPL_DIR" || exit 1
+    for file in "$STAGE_DIR/src"/*.spl; do
+        if [ -f "$file" ]; then
+            output=$(./spl "$file" 2>&1)
+            if [ -n "$output" ]; then
+                echo "$output"
+                echo "$file"
+            fi
+        fi
+    done
+fi
+
+# Compile EXPL files
+if [ -d "$EXPL_DIR" ]; then
+    cd "$EXPL_DIR" || exit 1
+    for file in "$STAGE_DIR/src"/*.expl; do
+        if [ -f "$file" ]; then
+            output=$(./expl "$file" 2>&1)
+            if [ -n "$output" ]; then
+                echo "$output"
+                echo "$file"
+            fi
+        fi
+    done
+fi
+
+# Move all to stage directory
+for file in "$STAGE_DIR/src"/*.xsm; do
+    if [ -f "$file" ]; then
+        mv "$file" "$STAGE_DIR/compiled/"
+    fi
+done

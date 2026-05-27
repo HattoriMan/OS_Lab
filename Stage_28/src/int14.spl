@@ -1,0 +1,117 @@
+// Changing the SP from user stack to kernel stack
+[PROCESS_TABLE + [SYSTEM_STATUS_TABLE+(5*CORE)+1] * 16 + 13] = SP;
+SP = [(PROCESS_TABLE+[SYSTEM_STATUS_TABLE+(5*CORE)+1]*16)+11]*512 - 1;
+
+R1 = ACQUIRE_KERN_LOCK;
+call ACCESS_CONTROL;
+
+alias returnVal R11;
+alias userSP R1;
+userSP = [PROCESS_TABLE + [SYSTEM_STATUS_TABLE+(5*CORE)+1] * 16 + 13];
+
+alias syscall R2;
+syscall = [([PTBR+2*((userSP-5)/512)]*512)+((userSP-5)%512)];
+[PROCESS_TABLE + [SYSTEM_STATUS_TABLE+(5*CORE)+1]*16 + 9] = syscall;
+
+alias currentPid R3;
+currentPid = [SYSTEM_STATUS_TABLE+(5*CORE)+1];
+
+// SemLock System Call
+if(syscall == 19) then
+	
+	alias semId R4;
+	alias resTable R5;
+	semId = [([PTBR+2*((userSP-4)/512)]*512)+((userSP-4)%512)];
+	resTable = [PROCESS_TABLE+(16*currentPid)+11]*512 + RESOURCE_TABLE_OFFSET;
+	
+	// Validate if semId is correct
+	if((semId>7)||(semId<0)) then
+		if([resTable+(2*semId)] != SEMAPHORE) then
+			returnVal = -1;
+			goto returnLabel;
+		endif;
+	endif;
+
+	alias semTableEntry R6;
+	semTableEntry = [resTable+(2*semId)+1];
+
+	while(([SEMAPHORE_TABLE+(semTableEntry*4)] != -1)&&([SEMAPHORE_TABLE+(semTableEntry*4)] != currentPid)) do
+		[PROCESS_TABLE+(16*currentPid)+4] = WAIT_SEMAPHORE;
+		[PROCESS_TABLE+(16*currentPid)+5] = semTableEntry;
+		
+		multipush(R1,R2,R3,R4,R5,R6);
+		// Releasing Kernel Lock
+		R1 = RELEASE_LOCK;
+		R2 = KERN_LOCK;
+		call ACCESS_CONTROL;
+	
+		call SCHEDULER;
+	
+		// Acquiring Kernel Lock
+		R1 = ACQUIRE_KERN_LOCK;
+		call ACCESS_CONTROL;
+		multipop(R1,R2,R3,R4,R5,R6);
+		
+	endwhile;
+	
+	[SEMAPHORE_TABLE+(semTableEntry*4)] = currentPid;
+	
+	returnVal = 0;
+	goto returnLabel;
+endif;
+
+// SemUnlock System Call
+if(syscall == 20) then
+
+	alias semId R4;
+	alias resTable R5;
+	semId = [([PTBR+2*((userSP-4)/512)]*512)+((userSP-4)%512)];
+	resTable = [PROCESS_TABLE+(16*currentPid)+11]*512 + RESOURCE_TABLE_OFFSET;
+	
+	// Validate if semId is correct
+	if((semId>7)||(semId<0)) then
+		if([resTable+(2*semId)] != SEMAPHORE) then
+			returnVal = -1;
+			goto returnLabel;
+		endif;
+	endif;
+	
+	alias semTableEntry R6;
+	semTableEntry = [resTable+(2*semId)+1];
+
+	if([SEMAPHORE_TABLE+(semTableEntry*4)] != -1) then
+		if([SEMAPHORE_TABLE+(semTableEntry*4)] != currentPid) then
+			returnVal = -2;
+			goto returnLabel;
+		endif;
+		
+		[SEMAPHORE_TABLE+(semTableEntry*4)] = -1;
+		alias count R7;
+		count = 1;
+		while(count < 16) do
+			alias proTable R8;
+			proTable = PROCESS_TABLE+(16*count);
+			if(([proTable+4]==WAIT_SEMAPHORE)&&([proTable+5]==semTableEntry)) then
+				[proTable+4] = READY;
+				[proTable+5] = -1;				
+			endif;
+			count = count + 1; 
+		endwhile;
+	endif;	
+	
+	returnVal = 0;
+	goto returnLabel;
+	
+endif;
+
+returnLabel:
+	[([PTBR+2*((userSP-1)/512)]*512)+((userSP-1)%512)] = returnVal;
+	[PROCESS_TABLE+(currentPid*16)+9] = 0;
+	
+	R1 = RELEASE_LOCK;
+  	R2 = KERN_LOCK;
+  	call ACCESS_CONTROL;
+  	
+  	SP = [PROCESS_TABLE + [SYSTEM_STATUS_TABLE+(5*CORE)+1] * 16 + 13];
+  	
+	ireturn;

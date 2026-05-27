@@ -1,0 +1,98 @@
+[PROCESS_TABLE + ([SYSTEM_STATUS_TABLE+(5*CORE)+1] * 16) + 13] = SP;
+SP = [PROCESS_TABLE + ([SYSTEM_STATUS_TABLE+(5*CORE)+1] * 16) + 11] * 512 - 1;
+
+R1 = ACQUIRE_KERN_LOCK;
+call ACCESS_CONTROL;
+
+[PROCESS_TABLE + ([SYSTEM_STATUS_TABLE+(5*CORE)+1] * 16) + 9] = 15;
+
+alias userSp R1;
+userSp = [PROCESS_TABLE + ([SYSTEM_STATUS_TABLE+(5*CORE)+1] * 16) + 13];
+
+alias ptbr R2;
+ptbr = [PROCESS_TABLE + ([SYSTEM_STATUS_TABLE+(5*CORE)+1] * 16) + 14];
+
+// If current process is not shell or the user is not root
+if(([SYSTEM_STATUS_TABLE+(5*CORE)+1]!=2)||([PROCESS_TABLE+([SYSTEM_STATUS_TABLE+(5*CORE)+1]*16)+3]!= 1)) then
+	[[ptbr + 2*((userSp-1)/512)] * 512 + (userSp-1)%512] = -1;
+	[PROCESS_TABLE + ([SYSTEM_STATUS_TABLE+(5*CORE)+1] * 16) + 9] = 0;
+	
+	R1 = RELEASE_LOCK;
+  	R2 = KERN_LOCK;
+  	call ACCESS_CONTROL;
+  	
+  	SP = [PROCESS_TABLE + ([SYSTEM_STATUS_TABLE+(5*CORE)+1] * 16) + 13];
+  	
+	ireturn;
+endif;
+
+reset;
+[ACCESS_LOCK_TABLE + 1] = 0;
+
+// Kill All Process - PROCESS MANAGER MODULE
+multipush(R1,R2);
+R1 = 5;
+R2 = [SYSTEM_STATUS_TABLE+(5*CORE)+1];
+call PROCESS_MANAGER;
+multipop(R1,R2);
+
+// Commit the changes of buffer table to disk
+alias count R11;
+count = 0;
+while(count < 4) do
+	// If dirty bit is set to 1
+	if([BUFFER_TABLE+(4*count)+1] == 1) then
+		multipush(R1,R2,R11);
+		R1 = 1;
+		R2 = [SYSTEM_STATUS_TABLE+(5*CORE)+1];
+		R4 = [BUFFER_TABLE+(count*4)];
+		R3 = BUFFER_BASE+count;
+		call DEVICE_MANAGER;
+		multipop(R1,R2,R11);
+		
+		[BUFFER_TABLE+(4*count)+1] = 0;
+	endif;
+	count = count + 1;
+endwhile;
+
+//inode table
+multipush(R1,R2);
+R1 = 1;
+R2 = [SYSTEM_STATUS_TABLE+(5*CORE)+1];
+R3 = 59;
+R4 = 3;
+call DEVICE_MANAGER;
+multipop(R1,R2);
+
+multipush(R1,R2);
+R1 = 1;
+R2 = [SYSTEM_STATUS_TABLE+(5*CORE)+1];
+R3 = 60;
+R4 = 4;
+call DEVICE_MANAGER;
+multipop(R1,R2);
+
+//root file
+multipush(R1,R2);
+R1 = 1;
+R2 = [SYSTEM_STATUS_TABLE+(5*CORE)+1];
+R3 = 62;
+R4 = 5;
+call DEVICE_MANAGER;
+multipop(R1,R2);
+
+//disk free list
+multipush(R1,R2);
+R1 = 1;
+R2 = [SYSTEM_STATUS_TABLE+(5*CORE)+1];
+R3 = 61;
+R4 = 2;
+call DEVICE_MANAGER;
+multipop(R1,R2);
+breakpoint;
+
+R1 = RELEASE_LOCK;
+R2 = KERN_LOCK;
+call ACCESS_CONTROL;
+
+halt;

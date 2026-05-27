@@ -1,0 +1,125 @@
+// For loading the Boot Module(Module 7) from disk
+loadi(54,67);
+loadi(55,68);
+
+// Loading secondary bootstrap loader code
+loadi(128, 512);
+
+// For loading the code for idle process
+loadi(69,11);
+
+// Loading Access control module 
+loadi(132, 516);
+loadi(133, 517);
+
+// User area page number for idle process is 82.This setup stack for calling bootModule
+SP = 82 * 512 - 1; 
+
+// We will make changes in the BOOT_MODULE in later stages.
+call BOOT_MODULE;
+
+alias count R0;
+///////////// IDLE PROCESS ////////////
+
+// Setting up the Page table for Idle process.
+
+PTBR = PAGE_TABLE_BASE;
+PTLR = 10;
+
+count = 0;
+while(count < 10) do
+	[PTBR+(2*count)] = -1;
+	[PTBR+(2*count)+1] = "0000";
+	
+	[PTBR+280+(2*count)] = -1;
+	[PTBR+280+(2*count)+1] = "0000";
+	
+	[PTBR+300+(2*count)] = -1;
+	[PTBR+300+(2*count)+1] = "0000";
+	
+	count = count + 1;
+endwhile;
+
+//Code
+[PTBR+8] = 69;
+[PTBR+9] = "0100";
+
+//Stack
+[PTBR+16] = 70;
+[PTBR+17] = "0110";
+
+// Making Entries in Process Table for idle process
+[PROCESS_TABLE + 1] = 0;					// PID
+[PROCESS_TABLE + 11] = 76;					// User Page Area
+[PROCESS_TABLE + 13] = 8*512;				// UPTR field
+[PROCESS_TABLE + 12] = 0;					// KPRT field
+[PROCESS_TABLE + 14] = PAGE_TABLE_BASE;		// PTBR
+[PROCESS_TABLE + 15] = 10;					// PTLR
+[PROCESS_TABLE + 4] = RUNNING;				// State
+
+[70 * 512] = [69 * 512 + 1];
+
+
+///////////// IDLE PROCESS 2 ////////////
+
+// Setting up the Page table for Idle process.
+PTBR = PAGE_TABLE_BASE + 280;
+
+//Code
+[PTBR+8] = 69;
+[PTBR+9] = "0100";
+
+//Stack
+[PTBR+16] = 83;
+[PTBR+17] = "0110";
+
+// Making Entries in Process Table for idle2 process
+[PROCESS_TABLE + (16*14) + 1] = 14;						// PID
+[PROCESS_TABLE + (16*14) + 11] = 84;					// User Page Area
+[PROCESS_TABLE + (16*14) + 13] = 8*512;					// UPTR field
+[PROCESS_TABLE + (16*14) + 12] = 0;						// KPRT field
+[PROCESS_TABLE + (16*14) + 14] = PTBR;					// PTBR
+[PROCESS_TABLE + (16*14) + 15] = 10;					// PTLR
+[PROCESS_TABLE + (16*14) + 4] = RUNNING;				// State
+
+[83 * 512] = [69 * 512 + 1];
+
+/////////// Swapper Daemon ////////////
+
+PTBR = PAGE_TABLE_BASE + 300;
+
+
+//Code
+[PTBR+8] = 69;
+[PTBR+9] = "0100";
+
+//Stack
+[PTBR+16] = 81;
+[PTBR+17] = "0110";
+
+// Making Entries in Process Table for idle process
+[PROCESS_TABLE + (16*15) + 1] = 15;					// PID
+[PROCESS_TABLE + (16*15) + 11] = 82;				// User Page Area
+[PROCESS_TABLE + (16*15) + 13] = 8*512;				// UPTR field
+[PROCESS_TABLE + (16*15) + 12] = 0;					// KPRT field
+[PROCESS_TABLE + (16*15) + 14] = PTBR;				// PTBR
+[PROCESS_TABLE + (16*15) + 15] = 10;				// PTLR
+[PROCESS_TABLE + (16*15) + 4] = CREATED;			// State
+
+[81*512] = [69*512 + 1];
+
+// // 
+PTBR = PAGE_TABLE_BASE;
+SP = 8*512;
+
+// Idle process is scheduled to run first.
+[SYSTEM_STATUS_TABLE + 7] = 0;
+[SYSTEM_STATUS_TABLE + 6] = 14;
+[SYSTEM_STATUS_TABLE + 1] = 0;
+[KERN_LOCK] = 0;
+[SCHED_LOCK] = 0;
+
+start;
+
+// breakpoint;
+ireturn;

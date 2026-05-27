@@ -1,0 +1,176 @@
+// Changing the SP from user stack to kernel stack
+[PROCESS_TABLE + [SYSTEM_STATUS_TABLE+(5*CORE)+1] * 16 + 13] = SP;
+SP = [(PROCESS_TABLE+[SYSTEM_STATUS_TABLE+(5*CORE)+1]*16)+11]*512 - 1;
+
+R1 = ACQUIRE_KERN_LOCK;
+call ACCESS_CONTROL;
+
+alias userSP R1;
+alias currentPid R2;
+alias returnVal R11;
+
+userSP = [PROCESS_TABLE + [SYSTEM_STATUS_TABLE+(5*CORE)+1]*16 + 13];
+currentPid = [SYSTEM_STATUS_TABLE+(5*CORE)+1];
+[PROCESS_TABLE + [SYSTEM_STATUS_TABLE+(5*CORE)+1]*16 + 9] = 5;
+
+alias fileDescriptor R3;
+alias word R4;
+
+fileDescriptor = [([PTBR+2*((userSP-4)/512)]*512)+((userSP-4)%512)];
+word = [([PTBR+2*((userSP-3)/512)]*512)+((userSP-3)%512)];
+
+// Terminal Write
+if(fileDescriptor == -2) then
+
+	multipush(R1,R2,R3,R4);
+	R1 = 3;
+	R2 = [SYSTEM_STATUS_TABLE+(5*CORE)+1];
+	R3 = word;
+	call DEVICE_MANAGER;
+	multipop(R1,R2,R3,R4);
+
+	returnVal = 0;
+	goto returnLabel;
+
+else
+
+	// Check if file Descriptor is valid or not
+	if((fileDescriptor<0)||(fileDescriptor>7)) then
+		// print("Error0");
+		returnVal = -1;
+		goto returnLabel;
+	endif;
+
+	alias resTable R5;
+	resTable = ([PROCESS_TABLE+(currentPid*16)+11]*512) + RESOURCE_TABLE_OFFSET;
+	
+	// No File is Open with This File Descriptor
+	if([resTable+(2*fileDescriptor)] != FILE) then
+		// print("Error1");
+		// print([resTable+(2*fileDescriptor)]);
+		// print(fileDescriptor);
+		returnVal = -1;
+		goto returnLabel;
+	endif;
+	
+	alias openFileIndex R6;
+	alias inodeIndex R7;
+	openFileIndex = [resTable+(2*fileDescriptor)+1];
+	inodeIndex = [OPEN_FILE_TABLE+(4*openFileIndex)];
+
+
+	alias userId R8;
+	alias inodeEntry R9;
+	userId = [PROCESS_TABLE+(16*currentPid)+3];
+	inodeEntry = INODE_TABLE+(inodeIndex*16);
+	
+	// Current user is not root and doesn't own file
+	if(userId != 1) then
+		if(([inodeEntry+4]==0)&&(userId != [inodeEntry+3])) then
+			returnVal = -3;
+			goto returnLabel;
+		endif;
+	endif;
+
+	// Acquire Inode Table
+	multipush(R1,R2,R3,R4,R5,R6,R7,R8,R9);
+	R1 = 4;
+	R2 = [SYSTEM_STATUS_TABLE+(5*CORE)+1];
+	R3 = inodeIndex;
+	call RESOURCE_MANAGER;
+	multipop(R1,R2,R3,R4,R5,R6,R7,R8,R9);
+
+	// Locking Fails
+	if(R0 == -1) then
+		// print("Error2");
+		returnVal = -1;
+		goto returnLabel;
+	endif;
+	
+	alias lseek R8;
+	lseek = [OPEN_FILE_TABLE+(4*openFileIndex)+2];
+
+	if(lseek == MAX_FILE_SIZE) then
+		// Release Inode
+		multipush(R1,R2,R3,R4,R5,R6,R7,R8);
+		R1 = 5;
+		R2 = [SYSTEM_STATUS_TABLE+(5*CORE)+1];
+		R3 = inodeIndex;
+		call RESOURCE_MANAGER;
+		multipop(R1,R2,R3,R4,R5,R6,R7,R8);	
+	
+		returnVal = -2;
+		goto returnLabel;
+		
+	endif;
+	
+	if((lseek%512 == 0)&&(lseek == [INODE_TABLE+(16*inodeIndex)+2])) then
+	
+		// Get Free Block
+		multipush(R1,R2,R3,R4,R5,R6,R7,R8,R9);
+		R1 = 3;
+		call MEMORY_MANAGER;
+		multipop(R1,R2,R3,R4,R5,R6,R7,R8,R9);
+		
+		// If no free block is present
+		if(R0 == -1) then
+			// Release Inode
+			multipush(R1,R2,R3,R4,R5,R6,R7,R8,R9);
+			R1 = 5;
+			R2 = [SYSTEM_STATUS_TABLE+(5*CORE)+1];
+			R3 = inodeIndex;
+			call RESOURCE_MANAGER;
+			multipop(R1,R2,R3,R4,R5,R6,R7,R8,R9);	
+	
+			returnVal = -2;
+			goto returnLabel;
+		
+		endif;
+		
+		[INODE_TABLE+(16*inodeIndex)+8+(lseek/512)] = R0;
+	
+	endif;
+
+	// Buffer Write
+	multipush(R1,R2,R3,R4,R5,R6,R7,R8,R9);
+	R1 = 1;
+	R2 = [SYSTEM_STATUS_TABLE+(5*CORE)+1];
+	R5 = word;
+	R3 = [INODE_TABLE+(16*inodeIndex)+8+(lseek/512)];
+	R4 = lseek%512;
+	call FILE_MANAGER;
+	multipop(R1,R2,R3,R4,R5,R6,R7,R8,R9);
+	
+	if(lseek == [INODE_TABLE+(16*inodeIndex)+2]) then
+		[INODE_TABLE+(16*inodeIndex)+2] = [INODE_TABLE+(16*inodeIndex)+2] + 1;
+		[ROOT_FILE+(8*inodeIndex)+1] = [ROOT_FILE+(8*inodeIndex)+1] + 1;
+	endif;
+
+	[OPEN_FILE_TABLE+(openFileIndex*4)+2] = [OPEN_FILE_TABLE+(openFileIndex*4)+2] + 1;
+	
+	// Release Inode
+	multipush(R1,R2,R3,R4,R5,R6,R7,R8,R9);
+	R1 = 5;
+	R2 = [SYSTEM_STATUS_TABLE+(5*CORE)+1];
+	R3 = inodeIndex;
+	call RESOURCE_MANAGER;
+	multipop(R1,R2,R3,R4,R5,R6,R7,R8,R9);	
+	
+	returnVal = 0;
+	goto returnLabel;
+	
+
+endif;
+
+
+returnLabel:
+	[([PTBR+2*((userSP-1)/512)]*512)+((userSP-1)%512)] = returnVal;
+	[PROCESS_TABLE+(currentPid*16)+9] = 0;
+	
+	R1 = RELEASE_LOCK;
+  	R2 = KERN_LOCK;
+  	call ACCESS_CONTROL;
+  	
+  	SP = [PROCESS_TABLE + [SYSTEM_STATUS_TABLE+(5*CORE)+1]*16 + 13];
+  	
+	ireturn;

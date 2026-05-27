@@ -1,0 +1,42 @@
+load --os /home/oslab/OSLab/Stage_25/compiled/os_startup.xsm
+load --library /home/oslab/myexpos/expl/library.lib
+load --idle /home/oslab/OSLab/Stage_25/compiled/idle.xsm
+load --init /home/oslab/OSLab/Stage_25/compiled/shell.xsm
+load --module 0 /home/oslab/OSLab/Stage_25/compiled/mod0_res.xsm
+load --module 1 /home/oslab/OSLab/Stage_25/compiled/mod1_proc.xsm
+load --module 2 /home/oslab/OSLab/Stage_25/compiled/mod2_mem.xsm
+load --module 3 /home/oslab/OSLab/Stage_25/compiled/mod3_file.xsm
+load --module 4 /home/oslab/OSLab/Stage_25/compiled/mod4_dev.xsm
+load --module 5 /home/oslab/OSLab/Stage_25/compiled/mod5_scheduler.xsm
+load --module 7 /home/oslab/OSLab/Stage_25/compiled/mod7_boot.xsm
+load --exhandler /home/oslab/OSLab/Stage_25/compiled/int00_exhandler.xsm
+load --int=timer /home/oslab/OSLab/Stage_25/compiled/int01_timer.xsm
+load --int=disk /home/oslab/OSLab/Stage_25/compiled/int02_disk.xsm
+load --int=console /home/oslab/OSLab/Stage_25/compiled/int03_console.xsm
+load --int=4 /home/oslab/OSLab/Stage_25/compiled/int04.xsm
+load --int=5 /home/oslab/OSLab/Stage_25/compiled/int05.xsm
+load --int=6 /home/oslab/OSLab/Stage_25/compiled/int06_read.xsm
+load --int=7 /home/oslab/OSLab/Stage_25/compiled/int07_write.xsm
+load --int=8 /home/oslab/OSLab/Stage_25/compiled/int08_fork.xsm
+load --int=9 /home/oslab/OSLab/Stage_25/compiled/int09_exec.xsm
+load --int=10 /home/oslab/OSLab/Stage_25/compiled/int10_exit.xsm
+load --int=11 /home/oslab/OSLab/Stage_25/compiled/int11.xsm
+load --int=13 /home/oslab/OSLab/Stage_25/compiled/int13.xsm
+load --int=14 /home/oslab/OSLab/Stage_25/compiled/int14.xsm
+load --int=15 /home/oslab/OSLab/Stage_25/compiled/int15_shutdown.xsm
+rm a25_1.xsm
+load --exec /home/oslab/OSLab/Stage_25/compiled/a25_1.xsm
+rm a25_2.xsm
+load --exec /home/oslab/OSLab/Stage_25/compiled/a25_2.xsm
+rm a25_3.xsm
+load --exec /home/oslab/OSLab/Stage_25/compiled/a25_3.xsm
+rm a25_4.xsm
+load --exec /home/oslab/OSLab/Stage_25/compiled/a25_4.xsm
+rm cat.xsm
+load --exec /home/oslab/OSLab/Stage_25/compiled/cat.xsm
+rm cp.xsm
+load --exec /home/oslab/OSLab/Stage_25/compiled/cp.xsm
+rm ls.xsm
+load --exec /home/oslab/OSLab/Stage_25/compiled/ls.xsm
+rm rm.xsm
+load --exec /home/oslab/OSLab/Stage_25/compiled/rm.xsm
